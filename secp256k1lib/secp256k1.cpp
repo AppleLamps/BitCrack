@@ -11,6 +11,26 @@
 
 #if defined(__SIZEOF_INT128__)
 #include "field64.h"
+
+static FE_INLINE void fe_load(fe &r, const secp256k1::uint256 &a)
+{
+	r.n[0] = (uint64_t)a.v[0] | ((uint64_t)a.v[1] << 32);
+	r.n[1] = (uint64_t)a.v[2] | ((uint64_t)a.v[3] << 32);
+	r.n[2] = (uint64_t)a.v[4] | ((uint64_t)a.v[5] << 32);
+	r.n[3] = (uint64_t)a.v[6] | ((uint64_t)a.v[7] << 32);
+}
+
+static FE_INLINE void fe_store(secp256k1::uint256 &r, const fe &a)
+{
+	r.v[0] = (unsigned int)a.n[0];
+	r.v[1] = (unsigned int)(a.n[0] >> 32);
+	r.v[2] = (unsigned int)a.n[1];
+	r.v[3] = (unsigned int)(a.n[1] >> 32);
+	r.v[4] = (unsigned int)a.n[2];
+	r.v[5] = (unsigned int)(a.n[2] >> 32);
+	r.v[6] = (unsigned int)a.n[3];
+	r.v[7] = (unsigned int)(a.n[3] >> 32);
+}
 #endif
 
 
@@ -840,10 +860,8 @@ void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, in
 	}
 
 #if defined(__SIZEOF_INT128__)
-	static std::vector<fe> run;
-	static std::vector<unsigned char> op;
-	run.resize(n);
-	op.resize(n);
+	std::vector<fe> run(n);
+	std::vector<unsigned char> op(n);
 
 	fe qx, qy;
 	fe_load(qx, q.x);
@@ -1047,23 +1065,12 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 	}
 
 #if defined(__SIZEOF_INT128__)
-	fe *xs = reinterpret_cast<fe *>(x);
-	fe *ys = reinterpret_cast<fe *>(y);
-
 	fe qxf, qyf;
-	qxf.n[0] = qx[0];
-	qxf.n[1] = qx[1];
-	qxf.n[2] = qx[2];
-	qxf.n[3] = qx[3];
-	qyf.n[0] = qy[0];
-	qyf.n[1] = qy[1];
-	qyf.n[2] = qy[2];
-	qyf.n[3] = qy[3];
+	fe_load_u64(qxf, qx);
+	fe_load_u64(qyf, qy);
 
-	static std::vector<fe> run;
-	static std::vector<unsigned char> op;
-	run.resize(n);
-	op.resize(n);
+	std::vector<fe> run(n);
+	std::vector<unsigned char> op(n);
 
 #ifdef _OPENMP
 	#pragma omp parallel for schedule(static) num_threads(threads)
@@ -1071,22 +1078,27 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 #else
 	for(size_t i = 0; i < n; i++) {
 #endif
+		const uint64_t *xi = x + (size_t)i * 4;
+		const uint64_t *yi = y + (size_t)i * 4;
+		fe px, py;
 #if defined(__GNUC__)
 		if((size_t)i + 8 < n) {
-			__builtin_prefetch(&xs[i + 8], 0, 3);
+			__builtin_prefetch(x + ((size_t)i + 8) * 4, 0, 3);
 		}
 #endif
-		if(fe_eq(xs[i], qxf)) {
-			if(fe_eq(ys[i], qyf)) {
+		fe_load_u64(px, xi);
+		fe_load_u64(py, yi);
+		if(fe_eq(px, qxf)) {
+			if(fe_eq(py, qyf)) {
 				op[i] = 2;
-				fe_add(run[i], ys[i], ys[i]);
+				fe_add(run[i], py, py);
 			} else {
 				op[i] = 3;
 				fe_set1(run[i]);
 			}
 		} else {
 			op[i] = 0;
-			fe_sub(run[i], xs[i], qxf);
+			fe_sub(run[i], px, qxf);
 		}
 	}
 
@@ -1121,21 +1133,23 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 #else
 	for(size_t i = 0; i < n; i++) {
 #endif
+		uint64_t *xi = x + (size_t)i * 4;
+		uint64_t *yi = y + (size_t)i * 4;
 #if defined(__GNUC__)
 		if((size_t)i + 8 < n) {
-			__builtin_prefetch(&xs[i + 8], 0, 3);
-			__builtin_prefetch(&ys[i + 8], 0, 3);
+			__builtin_prefetch(x + ((size_t)i + 8) * 4, 0, 3);
+			__builtin_prefetch(y + ((size_t)i + 8) * 4, 0, 3);
 		}
 #endif
 		if(op[i] == 3) {
-			xs[i].n[0] = xs[i].n[1] = xs[i].n[2] = xs[i].n[3] = ~0ULL;
-			ys[i].n[0] = ys[i].n[1] = ys[i].n[2] = ys[i].n[3] = ~0ULL;
+			xi[0] = xi[1] = xi[2] = xi[3] = ~0ULL;
+			yi[0] = yi[1] = yi[2] = yi[3] = ~0ULL;
 			continue;
 		}
 
-		fe px = xs[i];
-		fe py = ys[i];
-		fe s, rx, ry, tmp;
+		fe px, py, s, rx, ry, tmp;
+		fe_load_u64(px, xi);
+		fe_load_u64(py, yi);
 
 		if(op[i] == 2) {
 			fe_sqr(tmp, px);
@@ -1148,8 +1162,8 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 			fe_sub(tmp, px, rx);
 			fe_mul(ry, s, tmp);
 			fe_sub(ry, ry, py);
-			xs[i] = rx;
-			ys[i] = ry;
+			fe_store_u64(xi, rx);
+			fe_store_u64(yi, ry);
 			continue;
 		}
 
@@ -1161,8 +1175,8 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 		fe_sub(tmp, px, rx);
 		fe_mul(ry, s, tmp);
 		fe_sub(ry, ry, py);
-		xs[i] = rx;
-		ys[i] = ry;
+		fe_store_u64(xi, rx);
+		fe_store_u64(yi, ry);
 	}
 #else
 	std::vector<ecpoint> points(n);

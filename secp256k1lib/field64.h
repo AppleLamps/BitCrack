@@ -5,7 +5,6 @@
  * Used on hosts with 128-bit integers. Operands are little-endian. */
 
 #include <stdint.h>
-#include <string.h>
 
 #if defined(__GNUC__)
 #define FE_INLINE inline __attribute__((always_inline))
@@ -20,24 +19,20 @@ struct fe {
 static const uint64_t FE_P0 = 0xFFFFFFFEFFFFFC2FULL;
 static const uint64_t FE_C  = 0x1000003D1ULL;
 
-static FE_INLINE void fe_load(fe &r, const secp256k1::uint256 &a)
+static FE_INLINE void fe_load_u64(fe &r, const uint64_t *p)
 {
-	r.n[0] = (uint64_t)a.v[0] | ((uint64_t)a.v[1] << 32);
-	r.n[1] = (uint64_t)a.v[2] | ((uint64_t)a.v[3] << 32);
-	r.n[2] = (uint64_t)a.v[4] | ((uint64_t)a.v[5] << 32);
-	r.n[3] = (uint64_t)a.v[6] | ((uint64_t)a.v[7] << 32);
+	r.n[0] = p[0];
+	r.n[1] = p[1];
+	r.n[2] = p[2];
+	r.n[3] = p[3];
 }
 
-static FE_INLINE void fe_store(secp256k1::uint256 &r, const fe &a)
+static FE_INLINE void fe_store_u64(uint64_t *p, const fe &a)
 {
-	r.v[0] = (unsigned int)a.n[0];
-	r.v[1] = (unsigned int)(a.n[0] >> 32);
-	r.v[2] = (unsigned int)a.n[1];
-	r.v[3] = (unsigned int)(a.n[1] >> 32);
-	r.v[4] = (unsigned int)a.n[2];
-	r.v[5] = (unsigned int)(a.n[2] >> 32);
-	r.v[6] = (unsigned int)a.n[3];
-	r.v[7] = (unsigned int)(a.n[3] >> 32);
+	p[0] = a.n[0];
+	p[1] = a.n[1];
+	p[2] = a.n[2];
+	p[3] = a.n[3];
 }
 
 static FE_INLINE void fe_set1(fe &r)
