@@ -16,6 +16,7 @@
 #endif
 
 static const int kJumpCount = 32;
+static const int kFalconHeat = 8;
 
 struct Roo {
 	secp256k1::ecpoint p;
@@ -106,6 +107,47 @@ static unsigned int jumpIndexOf(const secp256k1::uint256 &x, bool mixed)
 	unsigned int h = x.v[0] ^ x.v[1] ^ (x.v[0] >> 13) ^ (x.v[2] * 0x9e3779b9u);
 	h ^= x.v[3] + 0x85ebca6bu;
 	return h & (unsigned int)(kJumpCount - 1);
+}
+
+static unsigned int falconHeat(const secp256k1::uint256 &x)
+{
+	// 0 = cold (soar / large jumps), 7 = hot (stoop / small jumps).
+	// This is a function of the visible curve point, not of the secret
+	// scalar: a live heatmap of x cannot be updated from wild landings,
+	// because those landings are EC points, not scalars.
+	unsigned int h = x.v[0] ^ (x.v[0] >> 11) ^ x.v[1] ^ (x.v[2] * 0x9e3779b9u);
+	h ^= x.v[3] + 0x85ebca6bu;
+	return (h >> 3) & (unsigned int)(kFalconHeat - 1);
+}
+
+static unsigned int falconSlot(const secp256k1::uint256 &x)
+{
+	return falconHeat(x) * (unsigned int)kJumpCount + jumpIndexOf(x, true);
+}
+
+static secp256k1::uint256 shrBits(const secp256k1::uint256 &a, int bits)
+{
+	secp256k1::uint256 r;
+	if(bits <= 0) {
+		return a;
+	}
+	if(bits >= 256) {
+		return r;
+	}
+	const int limb = bits / 32;
+	const int rem = bits % 32;
+	for(int i = 0; i < 8; i++) {
+		int src = i + limb;
+		if(src >= 8) {
+			r.v[i] = 0;
+		} else {
+			r.v[i] = a.v[src] >> rem;
+			if(rem != 0 && src + 1 < 8) {
+				r.v[i] |= a.v[src + 1] << (32 - rem);
+			}
+		}
+	}
+	return r;
 }
 
 static secp256k1::uint256 randomBelow(crypto::Rng &rng, const secp256k1::uint256 &limit)
@@ -232,6 +274,22 @@ static void buildJumpDists(int rangeBits, int herdSize, bool retuned, secp256k1:
 	}
 }
 
+static void buildFalconJumps(int rangeBits, int herdSize, secp256k1::uint256 *jumpDist, int nJumps)
+{
+	secp256k1::uint256 base[kJumpCount];
+	buildJumpDists(rangeBits, herdSize, true, base);
+	for(int h = 0; h < kFalconHeat; h++) {
+		for(int i = 0; i < kJumpCount; i++) {
+			secp256k1::uint256 d = shrBits(base[i], h);
+			if(d.isZero()) {
+				d = secp256k1::uint256(1);
+			}
+			jumpDist[h * kJumpCount + i] = d;
+		}
+	}
+	(void)nJumps;
+}
+
 static std::string optLabel(int flags)
 {
 	if(flags == 0) {
@@ -252,6 +310,12 @@ static std::string optLabel(int flags)
 			s += "+";
 		}
 		s += "dp";
+	}
+	if(flags & KANGAROO_OPT_FALCON) {
+		if(!s.empty()) {
+			s += "+";
+		}
+		s += "falcon";
 	}
 	return s;
 }
@@ -275,6 +339,7 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	const bool useBatch = (config.optFlags & KANGAROO_OPT_BATCH_ADD) != 0;
 	const bool useJumps = (config.optFlags & KANGAROO_OPT_JUMPS) != 0;
 	const bool useDp = (config.optFlags & KANGAROO_OPT_DP) != 0;
+	const bool useFalcon = (config.optFlags & KANGAROO_OPT_FALCON) != 0;
 
 	const secp256k1::uint256 width = config.end - config.start + 1;
 	const int rangeBits = std::max(1, bitLength(width));
@@ -317,19 +382,24 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	const int nTame = herdSize / 2;
 	const int nWild = herdSize - nTame;
 
-	secp256k1::uint256 jumpDist[kJumpCount];
-	secp256k1::ecpoint jumpPoint[kJumpCount];
+	const int nJumps = useFalcon ? (kJumpCount * kFalconHeat) : kJumpCount;
+	std::vector<secp256k1::uint256> jumpDist((size_t)nJumps);
+	std::vector<secp256k1::ecpoint> jumpPoint((size_t)nJumps);
 	secp256k1::ecpoint g = secp256k1::G();
 
-	buildJumpDists(rangeBits, herdSize, useJumps, jumpDist);
-	std::vector<secp256k1::uint256> jumpKeys(kJumpCount);
+	if(useFalcon) {
+		buildFalconJumps(rangeBits, herdSize, jumpDist.data(), nJumps);
+	} else {
+		buildJumpDists(rangeBits, herdSize, useJumps, jumpDist.data());
+	}
+	std::vector<secp256k1::uint256> jumpKeys((size_t)nJumps);
 	std::vector<secp256k1::ecpoint> jumpPts;
-	for(int i = 0; i < kJumpCount; i++) {
-		jumpKeys[i] = jumpDist[i];
+	for(int i = 0; i < nJumps; i++) {
+		jumpKeys[(size_t)i] = jumpDist[(size_t)i];
 	}
 	secp256k1::generateKeyPairsBulk(g, jumpKeys, jumpPts);
-	for(int i = 0; i < kJumpCount; i++) {
-		jumpPoint[i] = jumpPts[i];
+	for(int i = 0; i < nJumps; i++) {
+		jumpPoint[(size_t)i] = jumpPts[(size_t)i];
 	}
 
 	uint64_t maxHops;
@@ -481,16 +551,17 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 
 		if(useBatch) {
 			for(int i = 0; i < herdSize; i++) {
-				unsigned int j = jumpIndexOf(herd[(size_t)i].p.x, useJumps);
-				batchJ[(size_t)i] = j;
-				batchP[(size_t)i] = herd[(size_t)i].p;
-				batchQ[(size_t)i] = jumpPoint[j];
+			const unsigned int j = useFalcon ? falconSlot(herd[(size_t)i].p.x)
+			                                 : jumpIndexOf(herd[(size_t)i].p.x, useJumps);
+			batchJ[(size_t)i] = j;
+			batchP[(size_t)i] = herd[(size_t)i].p;
+			batchQ[(size_t)i] = jumpPoint[(size_t)j];
 			}
 			secp256k1::addPointsIndependent(batchP, batchQ, threads);
 			for(int i = 0; i < herdSize; i++) {
 				unsigned int j = batchJ[(size_t)i];
 				herd[(size_t)i].p = batchP[(size_t)i];
-				herd[(size_t)i].d = herd[(size_t)i].d + jumpDist[j];
+				herd[(size_t)i].d = herd[(size_t)i].d + jumpDist[(size_t)j];
 				herd[(size_t)i].hops++;
 				considerDp(herd[(size_t)i], false);
 			}
@@ -506,9 +577,10 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 				}
 
 				Roo &roo = herd[(size_t)i];
-				const unsigned int j = jumpIndexOf(roo.p.x, useJumps);
-				roo.p = secp256k1::addPoints(roo.p, jumpPoint[j]);
-				roo.d = roo.d + jumpDist[j];
+				const unsigned int j = useFalcon ? falconSlot(roo.p.x)
+				                                 : jumpIndexOf(roo.p.x, useJumps);
+				roo.p = secp256k1::addPoints(roo.p, jumpPoint[(size_t)j]);
+				roo.d = roo.d + jumpDist[(size_t)j];
 				roo.hops++;
 				considerDp(roo, false);
 			}
@@ -583,9 +655,10 @@ int runKangarooBench(const KangarooConfig &baseIn)
 		KANGAROO_OPT_NONE,
 		KANGAROO_OPT_BATCH_ADD,
 		KANGAROO_OPT_JUMPS,
-		KANGAROO_OPT_DP
+		KANGAROO_OPT_DP,
+		KANGAROO_OPT_BATCH_ADD | KANGAROO_OPT_FALCON
 	};
-	const int nVar = 4;
+	const int nVar = 5;
 
 	logBench("Kangaroo variant bench");
 	logBench("Herd: " + util::format((uint64_t)base.herdSize) +
@@ -633,7 +706,7 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	secp256k1::uint256 tStart(1);
 	secp256k1::uint256 tEnd((uint64_t)1 << 36);
 	secp256k1::uint256 tKey((uint64_t)0x123456789ULL);
-	double jps[4] = {0, 0, 0, 0};
+	double jps[5] = {0, 0, 0, 0, 0};
 	for(int v = 0; v < nVar; v++) {
 		KangarooConfig c = benchCfg(base, tStart, tEnd, tKey, variants[v], 2000);
 		KangarooResult r = runKangaroo(c);
@@ -657,9 +730,9 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	const int nSolve = 4;
 
 	logBench("--- solve (range 2^22, 4 keys, 45s cap) ---");
-	double meanJumps[4] = {0, 0, 0, 0};
-	double meanMs[4] = {0, 0, 0, 0};
-	int foundN[4] = {0, 0, 0, 0};
+	double meanJumps[5] = {0, 0, 0, 0, 0};
+	double meanMs[5] = {0, 0, 0, 0, 0};
+	int foundN[5] = {0, 0, 0, 0, 0};
 	for(int v = 0; v < nVar; v++) {
 		uint64_t sumJ = 0;
 		uint64_t sumMs = 0;
@@ -691,9 +764,9 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	secp256k1::uint256 mStart((uint64_t)0x2000000);
 	secp256k1::uint256 mEnd((uint64_t)0x3FFFFFF);
 	secp256k1::uint256 mKeys[2] = {secp256k1::uint256((uint64_t)0x2ABCDEF), secp256k1::uint256((uint64_t)0x35E0001)};
-	double meanJumps26[4] = {0, 0, 0, 0};
-	double meanMs26[4] = {0, 0, 0, 0};
-	int found26[4] = {0, 0, 0, 0};
+	double meanJumps26[5] = {0, 0, 0, 0, 0};
+	double meanMs26[5] = {0, 0, 0, 0, 0};
+	int found26[5] = {0, 0, 0, 0, 0};
 	for(int v = 0; v < nVar; v++) {
 		uint64_t sumJ = 0;
 		uint64_t sumMs = 0;
@@ -751,6 +824,13 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	}
 	if(foundN[3] > 0 && meanMs[3] > 0 && meanMs[3] < meanMs[0] * 0.95) {
 		combo |= KANGAROO_OPT_DP;
+	}
+	if(found26[4] > 0 && meanJumps26[4] > 0 && meanJumps26[1] > 0 &&
+	   meanJumps26[4] < meanJumps26[1] * 0.95) {
+		combo |= KANGAROO_OPT_FALCON;
+	} else if(foundN[4] > 0 && meanJumps[4] > 0 && meanJumps[1] > 0 &&
+	          meanJumps[4] < meanJumps[1] * 0.95) {
+		combo |= KANGAROO_OPT_FALCON;
 	}
 
 	logBench("--- summary ---");

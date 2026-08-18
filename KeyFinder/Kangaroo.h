@@ -8,7 +8,8 @@ enum KangarooOpt {
 	KANGAROO_OPT_NONE = 0,
 	KANGAROO_OPT_BATCH_ADD = 1,
 	KANGAROO_OPT_JUMPS = 2,
-	KANGAROO_OPT_DP = 4
+	KANGAROO_OPT_DP = 4,
+	KANGAROO_OPT_FALCON = 8
 };
 
 struct KangarooConfig {

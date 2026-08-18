@@ -187,7 +187,7 @@ Pollard kangaroo (CPU) solves a key in a known range from the **public key**, no
 ./bin/cpuBitCrack --kangaroo --keyspace START:END --pubkey 02...
 ```
 
-`-t` is worker threads. `-p` is herd size (default 64 per thread). `--dp` sets distinguished-point bits (0 = auto). Kangaroo steps the herd with batched mixed-adds by default. `--kangaroo-opt N` selects solvers (`0` serial baseline, `1` batched mixed-adds, `2` retuned jumps, `4` herd-aware distinguished points; values can be added together). `--kangaroo-bench` A/B tests those variants.
+`-t` is worker threads. `-p` is herd size (default 64 per thread). `--dp` sets distinguished-point bits (0 = auto). Kangaroo steps the herd with batched mixed-adds by default. `--kangaroo-opt N` selects solvers (`0` serial baseline, `1` batched mixed-adds, `2` retuned jumps, `4` herd-aware distinguished points, `8` Falcon Swoop altitude jumps; values can be added together). `--kangaroo-bench` A/B tests those variants.
 
 Build all backends:
 ```
