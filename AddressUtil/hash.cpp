@@ -79,10 +79,10 @@ void Hash::hashPublicKey(const secp256k1::ecpoint &p, unsigned int *digest)
 void Hash::hashPublicKeyCompressed(const secp256k1::ecpoint &p, unsigned int *digest)
 {
 	unsigned int xWords[8];
-	unsigned int yWords[8];
+	unsigned int yWords[8] = { 0 };
 
 	p.x.exportWords(xWords, 8, secp256k1::uint256::BigEndian);
-	p.y.exportWords(yWords, 8, secp256k1::uint256::BigEndian);
+	yWords[7] = p.y.v[0];
 
 	hashPublicKeyCompressed(xWords, yWords, digest);
 }

@@ -1,12 +1,24 @@
 #include "CpuKeySearchDevice.h"
 
 #include "AddressUtil.h"
+#include "CryptoUtil.h"
 #include "Logger.h"
 #include "util.h"
 
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <thread>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -32,6 +44,7 @@ CpuKeySearchDevice::CpuKeySearchDevice(int threads, int pointsPerThread, int blo
     _blocks = blocks;
     _pointsPerThread = pointsPerThread;
     _iterations = 0;
+    _singleTarget = false;
 
     unsigned int hw = std::thread::hardware_concurrency();
     _deviceName = "CPU";
@@ -67,19 +80,39 @@ void CpuKeySearchDevice::init(const secp256k1::uint256 &start, int compression, 
 
     _stepIncrement = secp256k1::multiplyPoint(secp256k1::uint256(totalPoints) * _stride, g);
 
+    if(crypto::sha256UsesHardware()) {
+        Logger::log(LogLevel::Info, "SHA-256: hardware SHA-NI");
+    } else {
+        Logger::log(LogLevel::Info, "SHA-256: software");
+    }
+
     Logger::log(LogLevel::Info, "Done");
 }
 
 void CpuKeySearchDevice::setTargets(const std::set<KeySearchTarget> &targets)
 {
     _targets = targets;
+    _singleTarget = false;
+
+    if(targets.size() == 1) {
+        _singleTarget = true;
+        memcpy(_singleTargetHash, targets.begin()->value, sizeof(_singleTargetHash));
+    }
 }
 
 bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5])
 {
-    KeySearchTarget target(digest);
-    if(_targets.find(target) == _targets.end()) {
-        return false;
+    if(_singleTarget) {
+        if(digest[0] != _singleTargetHash[0] || digest[1] != _singleTargetHash[1] ||
+           digest[2] != _singleTargetHash[2] || digest[3] != _singleTargetHash[3] ||
+           digest[4] != _singleTargetHash[4]) {
+            return false;
+        }
+    } else {
+        KeySearchTarget target(digest);
+        if(_targets.find(target) == _targets.end()) {
+            return false;
+        }
     }
 
     KeySearchResult result;
@@ -95,27 +128,37 @@ bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint
     return true;
 }
 
-void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
+void CpuKeySearchDevice::processOne(uint64_t index)
 {
-    unsigned int xWords[8];
-    unsigned int yWords[8];
+    const secp256k1::ecpoint &point = _points[(size_t)index];
     unsigned int digest[5];
 
+    if(_compression == PointCompressionType::COMPRESSED) {
+        Hash::hashPublicKeyCompressed(point, digest);
+        checkAndRecord(index, point, true, digest);
+        return;
+    }
+
+    unsigned int xWords[8];
+    unsigned int yWords[8];
+    point.x.exportWords(xWords, 8, secp256k1::uint256::BigEndian);
+    point.y.exportWords(yWords, 8, secp256k1::uint256::BigEndian);
+
+    if(_compression == PointCompressionType::UNCOMPRESSED || _compression == PointCompressionType::BOTH) {
+        Hash::hashPublicKey(xWords, yWords, digest);
+        checkAndRecord(index, point, false, digest);
+    }
+
+    if(_compression == PointCompressionType::COMPRESSED || _compression == PointCompressionType::BOTH) {
+        Hash::hashPublicKeyCompressed(xWords, yWords, digest);
+        checkAndRecord(index, point, true, digest);
+    }
+}
+
+void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
+{
     for(uint64_t i = begin; i < end; i++) {
-        const secp256k1::ecpoint &point = _points[(size_t)i];
-
-        point.x.exportWords(xWords, 8, secp256k1::uint256::BigEndian);
-        point.y.exportWords(yWords, 8, secp256k1::uint256::BigEndian);
-
-        if(_compression == PointCompressionType::UNCOMPRESSED || _compression == PointCompressionType::BOTH) {
-            Hash::hashPublicKey(xWords, yWords, digest);
-            checkAndRecord(i, point, false, digest);
-        }
-
-        if(_compression == PointCompressionType::COMPRESSED || _compression == PointCompressionType::BOTH) {
-            Hash::hashPublicKeyCompressed(xWords, yWords, digest);
-            checkAndRecord(i, point, true, digest);
-        }
+        processOne(i);
     }
 }
 
@@ -154,8 +197,16 @@ void CpuKeySearchDevice::runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uin
 
 void CpuKeySearchDevice::doStep()
 {
+#ifdef _OPENMP
+    const int64_t n = (int64_t)keysPerStep();
+    #pragma omp parallel for schedule(static) num_threads(_threads)
+    for(int64_t i = 0; i < n; i++) {
+        processOne((uint64_t)i);
+    }
+#else
     runWorkers(&CpuKeySearchDevice::processRange);
-    secp256k1::addPointsBulk(_points, _stepIncrement);
+#endif
+    secp256k1::addPointsBulk(_points, _stepIncrement, _threads);
     _iterations++;
 }
 

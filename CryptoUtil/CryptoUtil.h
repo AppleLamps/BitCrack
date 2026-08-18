@@ -18,6 +18,7 @@ namespace crypto {
 
 	void sha256Init(unsigned int *digest);
 	void sha256(unsigned int *msg, unsigned int *digest);
+	bool sha256UsesHardware();
 
 	unsigned int checksum(const unsigned int *hash);
 };

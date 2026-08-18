@@ -350,8 +350,9 @@ namespace secp256k1 {
 	ecpoint addPoints(const ecpoint &p, const ecpoint &q);
 	ecpoint doublePoint(const ecpoint &p);
 
-	// Add Q to every point using one modular inverse (Montgomery batch inversion).
-	void addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q);
+	// Add Q to every point using Montgomery batch inversion.
+	// threads > 1 splits the batch across workers (OpenMP when available).
+	void addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, int threads = 1);
 
 	uint256 invModP(const uint256 &x);
 

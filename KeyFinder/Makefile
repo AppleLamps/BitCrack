@@ -12,7 +12,7 @@ ifeq ($(BUILD_OPENCL),1)
 	cp clKeyFinder.bin $(BINDIR)/clBitCrack
 endif
 ifeq ($(BUILD_CPU),1)
-	${CXX} -DBUILD_CPU -o cpuKeyFinder.bin ${CPPSRC} ${INCLUDE} ${CXXFLAGS} ${LIBS} -lkeyfinder -laddressutil -lsecp256k1 -lcryptoutil -lsecp256k1 -lCpuKeySearchDevice -llogger -lutil -lcmdparse -pthread
+	${CXX} -DBUILD_CPU -o cpuKeyFinder.bin ${CPPSRC} ${INCLUDE} ${CXXFLAGS} ${LIBS} -lkeyfinder -laddressutil -lsecp256k1 -lcryptoutil -lsecp256k1 -lCpuKeySearchDevice -llogger -lutil -lcmdparse -pthread -fopenmp
 	mkdir -p $(BINDIR)
 	cp cpuKeyFinder.bin $(BINDIR)/cpuBitCrack
 endif

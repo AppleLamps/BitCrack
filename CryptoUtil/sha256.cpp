@@ -22,23 +22,23 @@ static const unsigned int _IV[8] = {
 	0x5be0cd19
 };
 
-static unsigned int rotr(unsigned int x, int n)
+static inline unsigned int rotr(unsigned int x, int n)
 {
 	return (x >> n) | (x << (32 - n));
 }
 
-static unsigned int MAJ(unsigned int a, unsigned int b, unsigned int c)
+static inline unsigned int MAJ(unsigned int a, unsigned int b, unsigned int c)
 {
 	return (a & b) ^ (a & c) ^ (b & c);
 }
 
-static unsigned int CH(unsigned int e, unsigned int f, unsigned int g)
+static inline unsigned int CH(unsigned int e, unsigned int f, unsigned int g)
 {
 	return (e & f) ^ (~e & g);
 }
 
 
-static void round(unsigned int a, unsigned int b, unsigned int c, unsigned int &d, unsigned e, unsigned int f, unsigned int g, unsigned int &h, unsigned int m, unsigned int k)
+static inline void round(unsigned int a, unsigned int b, unsigned int c, unsigned int &d, unsigned e, unsigned int f, unsigned int g, unsigned int &h, unsigned int m, unsigned int k)
 {
 	unsigned int s = CH(e, f, g) + (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) + k + m;
 
@@ -48,6 +48,39 @@ static void round(unsigned int a, unsigned int b, unsigned int c, unsigned int &
 }
 
 
+#if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#include <cpuid.h>
+#endif
+
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+#include <intrin.h>
+#endif
+
+#if defined(HAVE_SHA_NI)
+extern "C" void crypto_sha256_shani(unsigned int *msg, unsigned int *digest);
+#endif
+
+static bool detectShaNi()
+{
+#if defined(HAVE_SHA_NI) && defined(__GNUC__)
+	__builtin_cpu_init();
+	return __builtin_cpu_supports("sha");
+#elif defined(HAVE_SHA_NI) && defined(_MSC_VER)
+	int info[4] = { 0 };
+	__cpuidex(info, 7, 0);
+	return (info[1] & (1 << 29)) != 0;
+#else
+	return false;
+#endif
+}
+
+static const bool kUseShaNi = detectShaNi();
+
+bool crypto::sha256UsesHardware()
+{
+	return kUseShaNi;
+}
+
 void crypto::sha256Init(unsigned int *digest)
 {
 	for(int i = 0; i < 8; i++) {
@@ -55,7 +88,7 @@ void crypto::sha256Init(unsigned int *digest)
 	}
 }
 
-void crypto::sha256(unsigned int *msg, unsigned int *digest)
+static void sha256Software(unsigned int *msg, unsigned int *digest)
 {
 	unsigned int a, b, c, d, e, f, g, h;
 	unsigned int s0, s1;
@@ -69,7 +102,7 @@ void crypto::sha256(unsigned int *msg, unsigned int *digest)
 	g = digest[6];
 	h = digest[7];
 
-	unsigned int w[80] = { 0 };
+	unsigned int w[64] = { 0 };
 	for(int i = 0; i < 16; i++) {
 		w[i] = msg[i];
 	}
@@ -103,4 +136,15 @@ void crypto::sha256(unsigned int *msg, unsigned int *digest)
 	digest[5] += f;
 	digest[6] += g;
 	digest[7] += h;
+}
+
+void crypto::sha256(unsigned int *msg, unsigned int *digest)
+{
+#if defined(HAVE_SHA_NI)
+	if(kUseShaNi) {
+		crypto_sha256_shani(msg, digest);
+		return;
+	}
+#endif
+	sha256Software(msg, digest);
 }

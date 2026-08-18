@@ -24,9 +24,13 @@ private:
 
     std::vector<secp256k1::ecpoint> _points;
     std::set<KeySearchTarget> _targets;
+    unsigned int _singleTargetHash[5];
+    bool _singleTarget;
+
     std::vector<KeySearchResult> _results;
     std::mutex _resultsMutex;
 
+    void processOne(uint64_t index);
     void processRange(uint64_t begin, uint64_t end);
     void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t));
     bool checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5]);

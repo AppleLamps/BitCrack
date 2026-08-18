@@ -55,7 +55,7 @@ endif
 
 ifeq ($(BUILD_CPU),1)
 	TARGETS:=${TARGETS} dir_cpuKeySearchDevice
-	CXXFLAGS:=${CXXFLAGS} -pthread
+	CXXFLAGS:=${CXXFLAGS} -pthread -fopenmp -march=native
 endif
 
 all:	${TARGETS}

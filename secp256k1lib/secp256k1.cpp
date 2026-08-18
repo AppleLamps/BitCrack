@@ -5,6 +5,10 @@
 
 #include "secp256k1.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 
 using namespace secp256k1;
 
@@ -13,6 +17,7 @@ static uint256 _ZERO;
 static crypto::Rng _rng;
 
 static void bulkInversionModP(std::vector<uint256> &in);
+static void bulkInversionModPRange(std::vector<uint256> &in, size_t begin, size_t end);
 
 static inline void addc(unsigned int a, unsigned int b, unsigned int carryIn, unsigned int &sum, int &carryOut)
 {
@@ -89,10 +94,6 @@ static int sub(const unsigned int *a, const unsigned int *b, unsigned int *c, in
 
 static void multiply(const unsigned int *x, int xLen, const unsigned int *y, int yLen, unsigned int *z)
 {
-	// Zero out the first yLen words of the z. We only need to clear the first yLen words
-	// because after each iteration the most significant word is overwritten anyway
-	//memset(z, 0, (yLen + xLen) * sizeof(unsigned int));
-
 	for(int i = 0; i < xLen + yLen; i++) {
 		z[i] = 0;
 	}
@@ -106,19 +107,51 @@ static void multiply(const unsigned int *x, int xLen, const unsigned int *y, int
 
 			uint64_t product = (uint64_t)x[i] * y[j];
 
-			// Take the existing sum and add it to the product plus the high word from the
-			// previous multiplication. Since we are adding to a larger datatype, the compiler
-			// will take care of performing any carries resulting from the addition
 			product = product + z[i + j] + high;
-			// update the sum
 			z[i + j] = (unsigned int)product;
-
-			// Keep the high word for the next iteration
 			high = product >> 32;
 		}
 
 		z[i + yLen] = high;
 	}
+}
+
+static void multiply256(const unsigned int a[8], const unsigned int b[8], unsigned int z[16])
+{
+#if defined(__SIZEOF_INT128__)
+	uint64_t x[4];
+	uint64_t y[4];
+	uint64_t r[8];
+
+	x[0] = (uint64_t)a[0] | ((uint64_t)a[1] << 32);
+	x[1] = (uint64_t)a[2] | ((uint64_t)a[3] << 32);
+	x[2] = (uint64_t)a[4] | ((uint64_t)a[5] << 32);
+	x[3] = (uint64_t)a[6] | ((uint64_t)a[7] << 32);
+
+	y[0] = (uint64_t)b[0] | ((uint64_t)b[1] << 32);
+	y[1] = (uint64_t)b[2] | ((uint64_t)b[3] << 32);
+	y[2] = (uint64_t)b[4] | ((uint64_t)b[5] << 32);
+	y[3] = (uint64_t)b[6] | ((uint64_t)b[7] << 32);
+
+	r[0] = r[1] = r[2] = r[3] = r[4] = r[5] = r[6] = r[7] = 0;
+
+	for(int i = 0; i < 4; i++) {
+		unsigned __int128 carry = 0;
+		for(int j = 0; j < 4; j++) {
+			unsigned __int128 t = (unsigned __int128)x[i] * y[j] + r[i + j] + carry;
+			r[i + j] = (uint64_t)t;
+			carry = t >> 64;
+		}
+		r[i + 4] = (uint64_t)carry;
+	}
+
+	for(int i = 0; i < 8; i++) {
+		z[2 * i] = (unsigned int)r[i];
+		z[2 * i + 1] = (unsigned int)(r[i] >> 32);
+	}
+#else
+	multiply(a, 8, b, 8, z);
+#endif
 }
 
 static uint256 rightShift(const uint256 &x, int count)
@@ -139,7 +172,7 @@ uint256 uint256::mul(const uint256 &x) const
 {
 	unsigned int product[16] = { 0 };
 
-	multiply(this->v, 8, x.v, 8, product);
+	multiply256(this->v, x.v, product);
 
 	return uint256(product);
 }
@@ -505,7 +538,7 @@ uint256 secp256k1::multiplyModP(const uint256 &a, const uint256 &b)
 {
 	unsigned int product[16];
 
-	multiply(a.v, 8, b.v, 8, product);
+	multiply256(a.v, b.v, product);
 
 	unsigned int tmp[10] = { 0 };
 	unsigned int tmp2[10] = { 0 };
@@ -590,7 +623,7 @@ uint256 secp256k1::multiplyModN(const uint256 &a, const uint256 &b)
 {
 	unsigned int product[16];
 
-	multiply(a.v, 8, b.v, 8, product);
+	multiply256(a.v, b.v, product);
 
 	uint256 r;
 
@@ -715,7 +748,7 @@ ecpoint secp256k1::addPoints(const ecpoint &p1, const ecpoint &p2)
 	return sum;
 }
 
-void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q)
+void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, int threads)
 {
 	size_t n = points.size();
 	if(n == 0) {
@@ -726,10 +759,19 @@ void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q)
 		return;
 	}
 
+	if(threads < 1) {
+		threads = 1;
+	}
+
 	std::vector<uint256> run(n);
 	std::vector<unsigned char> op(n);
 
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
 	for(size_t i = 0; i < n; i++) {
+#endif
 		if(isPointAtInfinity(points[i])) {
 			op[i] = 1;
 			run[i] = uint256(1);
@@ -747,9 +789,37 @@ void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q)
 		}
 	}
 
+#ifdef _OPENMP
+	if(threads > 1 && n > 1) {
+		#pragma omp parallel num_threads(threads)
+		{
+			int tid = omp_get_thread_num();
+			int nt = omp_get_num_threads();
+			size_t chunk = (n + (size_t)nt - 1) / (size_t)nt;
+			size_t begin = (size_t)tid * chunk;
+			size_t end = begin + chunk;
+			if(begin > n) {
+				begin = n;
+			}
+			if(end > n) {
+				end = n;
+			}
+			bulkInversionModPRange(run, begin, end);
+		}
+	} else {
+		bulkInversionModP(run);
+	}
+#else
 	bulkInversionModP(run);
+	(void)threads;
+#endif
 
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
 	for(size_t i = 0; i < n; i++) {
+#endif
 		if(op[i] == 1) {
 			points[i] = q;
 			continue;
@@ -817,32 +887,37 @@ bool secp256k1::pointExists(const ecpoint &p)
 	return y == x;
 }
 
-static void bulkInversionModP(std::vector<uint256> &in)
+static void bulkInversionModPRange(std::vector<uint256> &in, size_t begin, size_t end)
 {
-
-	std::vector<uint256> products;
-	uint256 total(1);
-
-	for(unsigned int i = 0; i < in.size(); i++) {
-		total = secp256k1::multiplyModP(total, in[i]);
-
-		products.push_back(total);
+	if(end <= begin) {
+		return;
 	}
 
-	// Do the inversion
+	size_t count = end - begin;
+	std::vector<uint256> products(count);
+	uint256 total(1);
+
+	for(size_t i = 0; i < count; i++) {
+		total = secp256k1::multiplyModP(total, in[begin + i]);
+		products[i] = total;
+	}
 
 	uint256 inverse = secp256k1::invModP(total);
 
-	for(int i = (int)in.size() - 1; i >= 0; i--) {
-
+	for(int i = (int)count - 1; i >= 0; i--) {
 		if(i > 0) {
 			uint256 newValue = secp256k1::multiplyModP(products[i - 1], inverse);
-			inverse = multiplyModP(inverse, in[i]);
-			in[i] = newValue;
+			inverse = multiplyModP(inverse, in[begin + i]);
+			in[begin + i] = newValue;
 		} else {
-			in[i] = inverse;
+			in[begin + i] = inverse;
 		}
 	}
+}
+
+static void bulkInversionModP(std::vector<uint256> &in)
+{
+	bulkInversionModPRange(in, 0, in.size());
 }
 
 void secp256k1::generateKeyPairsBulk(unsigned int count, const ecpoint &basePoint, std::vector<uint256> &privKeysOut, std::vector<ecpoint> &pubKeysOut)
