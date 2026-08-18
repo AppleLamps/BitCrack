@@ -168,17 +168,13 @@ static int autoDpBits(int rangeBits)
 
 static int autoDpBitsHerd(int rangeBits, int herdSize)
 {
+	int dp = autoDpBits(rangeBits) - 2;
 	int herdLog = 1;
 	while(herdLog < 30 && (1 << herdLog) < herdSize) {
 		herdLog++;
 	}
-	int dp = rangeBits / 2 - herdLog - 2;
-	if(rangeBits <= 18) {
-		dp = 3;
-	} else if(rangeBits <= 24) {
-		dp = 4;
-	} else if(rangeBits <= 32) {
-		dp = std::max(5, dp);
+	if(herdLog >= 8) {
+		dp -= 1;
 	}
 	if(dp < 2) {
 		dp = 2;
@@ -189,10 +185,14 @@ static int autoDpBitsHerd(int rangeBits, int herdSize)
 	return dp;
 }
 
-static void buildJumpDists(int rangeBits, bool retuned, secp256k1::uint256 jumpDist[kJumpCount])
+static void buildJumpDists(int rangeBits, int herdSize, bool retuned, secp256k1::uint256 jumpDist[kJumpCount])
 {
 	if(retuned) {
-		int meanBits = std::max(1, rangeBits / 2 - 1);
+		int herdLog = 1;
+		while(herdLog < 30 && (1 << herdLog) < std::max(2, herdSize)) {
+			herdLog++;
+		}
+		int meanBits = std::max(1, rangeBits / 2 - 1 - herdLog / 2);
 		int unitBits = std::max(0, meanBits - 4);
 		secp256k1::uint256 unit = shlOne(unitBits);
 		if(unit.isZero()) {
@@ -321,7 +321,7 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	secp256k1::ecpoint jumpPoint[kJumpCount];
 	secp256k1::ecpoint g = secp256k1::G();
 
-	buildJumpDists(rangeBits, useJumps, jumpDist);
+	buildJumpDists(rangeBits, herdSize, useJumps, jumpDist);
 	std::vector<secp256k1::uint256> jumpKeys(kJumpCount);
 	std::vector<secp256k1::ecpoint> jumpPts;
 	for(int i = 0; i < kJumpCount; i++) {
@@ -469,12 +469,7 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	}
 
 	while(!found.load(std::memory_order_relaxed)) {
-#ifdef _OPENMP
-		#pragma omp parallel for schedule(static) num_threads(threads)
 		for(int i = 0; i < herdSize; i++) {
-#else
-		for(int i = 0; i < herdSize; i++) {
-#endif
 			Roo &roo = herd[(size_t)i];
 			if(secp256k1::isPointAtInfinity(roo.p) || roo.hops > maxHops) {
 				reseed(roo);
@@ -692,6 +687,40 @@ int runKangarooBench(const KangarooConfig &baseIn)
 		         "  found=" + util::format(foundN[v]) + "/" + util::format(nSolve));
 	}
 
+	logBench("--- solve (range 2^26, 2 keys, 20s cap) ---");
+	secp256k1::uint256 mStart((uint64_t)0x2000000);
+	secp256k1::uint256 mEnd((uint64_t)0x3FFFFFF);
+	secp256k1::uint256 mKeys[2] = {secp256k1::uint256((uint64_t)0x2ABCDEF), secp256k1::uint256((uint64_t)0x35E0001)};
+	double meanJumps26[4] = {0, 0, 0, 0};
+	double meanMs26[4] = {0, 0, 0, 0};
+	int found26[4] = {0, 0, 0, 0};
+	for(int v = 0; v < nVar; v++) {
+		uint64_t sumJ = 0;
+		uint64_t sumMs = 0;
+		for(int t = 0; t < 2; t++) {
+			KangarooConfig c = benchCfg(base, mStart, mEnd, mKeys[t], variants[v], 20000);
+			KangarooResult r = runKangaroo(c);
+			std::string line = optLabel(variants[v]) + "  key=" + mKeys[t].toString() + "  ";
+			if(!r.found) {
+				line += r.timedOut ? "TIMEOUT" : "FAIL";
+			} else {
+				found26[v]++;
+				sumJ += r.jumps;
+				sumMs += r.elapsedMs;
+				line += "ok  jumps=" + util::formatThousands(r.jumps) +
+				        "  " + util::format((uint64_t)r.elapsedMs) + " ms";
+			}
+			logBench(line);
+		}
+		if(found26[v] > 0) {
+			meanJumps26[v] = (double)sumJ / (double)found26[v];
+			meanMs26[v] = (double)sumMs / (double)found26[v];
+		}
+		logBench(optLabel(variants[v]) + "  mean jumps=" + util::format("%.0f", meanJumps26[v]) +
+		         "  mean ms=" + util::format("%.0f", meanMs26[v]) +
+		         "  found=" + util::format(found26[v]) + "/2");
+	}
+
 	int winJps = 0;
 	int winJumps = 0;
 	int winMs = 0;
@@ -713,7 +742,9 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	if(jps[1] > jps[0] * 1.05) {
 		combo |= KANGAROO_OPT_BATCH_ADD;
 	}
-	if(foundN[2] > 0 && meanJumps[2] > 0 && meanJumps[2] < meanJumps[0] * 0.95) {
+	if(found26[2] > 0 && meanJumps26[2] > 0 && meanJumps26[2] < meanJumps26[0] * 0.95) {
+		combo |= KANGAROO_OPT_JUMPS;
+	} else if(foundN[2] > 0 && meanJumps[2] > 0 && meanJumps[2] < meanJumps[0] * 0.95) {
 		combo |= KANGAROO_OPT_JUMPS;
 	}
 	if(foundN[3] > 0 && meanMs[3] > 0 && meanMs[3] < meanMs[0] * 0.95) {
