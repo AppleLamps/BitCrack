@@ -83,9 +83,14 @@ bool crypto::sha256UsesHardware()
 
 void crypto::sha256Init(unsigned int *digest)
 {
-	for(int i = 0; i < 8; i++) {
-		digest[i] = _IV[i];
-	}
+	digest[0] = _IV[0];
+	digest[1] = _IV[1];
+	digest[2] = _IV[2];
+	digest[3] = _IV[3];
+	digest[4] = _IV[4];
+	digest[5] = _IV[5];
+	digest[6] = _IV[6];
+	digest[7] = _IV[7];
 }
 
 static void sha256Software(unsigned int *msg, unsigned int *digest)

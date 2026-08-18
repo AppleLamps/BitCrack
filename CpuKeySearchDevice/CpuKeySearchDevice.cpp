@@ -194,6 +194,11 @@ void CpuKeySearchDevice::processOne(uint64_t index)
 void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
 {
     for(uint64_t i = begin; i < end; i++) {
+#if defined(__GNUC__)
+        if(i + 8 < end) {
+            __builtin_prefetch(&_points[(size_t)i + 8], 0, 3);
+        }
+#endif
         processOne(i);
     }
 }
@@ -240,6 +245,11 @@ void CpuKeySearchDevice::doStep()
 #ifdef _OPENMP
     #pragma omp parallel for schedule(static) num_threads(_threads)
     for(int64_t i = 0; i < (int64_t)hashCount; i++) {
+#if defined(__GNUC__)
+        if(i + 8 < (int64_t)hashCount) {
+            __builtin_prefetch(&_points[(size_t)i + 8], 0, 3);
+        }
+#endif
         processOne((uint64_t)i);
     }
 #else

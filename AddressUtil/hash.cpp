@@ -4,9 +4,13 @@
 #include <stdio.h>
 #include <string.h>
 
-static unsigned int endian(unsigned int x)
+static inline unsigned int endian(unsigned int x)
 {
+#if defined(__GNUC__)
+	return __builtin_bswap32(x);
+#else
 	return (x << 24) | ((x << 8) & 0x00ff0000) | ((x >> 8) & 0x0000ff00) | (x >> 24);
+#endif
 }
 
 bool Address::verifyAddress(std::string address)
@@ -78,13 +82,42 @@ void Hash::hashPublicKey(const secp256k1::ecpoint &p, unsigned int *digest)
 
 void Hash::hashPublicKeyCompressed(const secp256k1::ecpoint &p, unsigned int *digest)
 {
-	unsigned int xWords[8];
-	unsigned int yWords[8] = { 0 };
+	unsigned int msg[16] = { 0 };
+	unsigned int sha256Digest[8];
+	const unsigned int *x = p.x.v;
 
-	p.x.exportWords(xWords, 8, secp256k1::uint256::BigEndian);
-	yWords[7] = p.y.v[0];
+	msg[15] = 33 * 8;
+	msg[8] = (x[0] << 24) | 0x00800000;
+	msg[7] = (x[0] >> 8) | (x[1] << 24);
+	msg[6] = (x[1] >> 8) | (x[2] << 24);
+	msg[5] = (x[2] >> 8) | (x[3] << 24);
+	msg[4] = (x[3] >> 8) | (x[4] << 24);
+	msg[3] = (x[4] >> 8) | (x[5] << 24);
+	msg[2] = (x[5] >> 8) | (x[6] << 24);
+	msg[1] = (x[6] >> 8) | (x[7] << 24);
+	msg[0] = (x[7] >> 8) | ((p.y.v[0] & 1) ? 0x03000000u : 0x02000000u);
 
-	hashPublicKeyCompressed(xWords, yWords, digest);
+	crypto::sha256Init(sha256Digest);
+	crypto::sha256(msg, sha256Digest);
+
+	msg[0] = endian(sha256Digest[0]);
+	msg[1] = endian(sha256Digest[1]);
+	msg[2] = endian(sha256Digest[2]);
+	msg[3] = endian(sha256Digest[3]);
+	msg[4] = endian(sha256Digest[4]);
+	msg[5] = endian(sha256Digest[5]);
+	msg[6] = endian(sha256Digest[6]);
+	msg[7] = endian(sha256Digest[7]);
+	msg[8] = 0x00000080;
+	msg[9] = 0;
+	msg[10] = 0;
+	msg[11] = 0;
+	msg[12] = 0;
+	msg[13] = 0;
+	msg[14] = 256;
+	msg[15] = 0;
+
+	crypto::ripemd160(msg, digest);
 }
 
 void Hash::hashPublicKey(const unsigned int *x, const unsigned int *y, unsigned int *digest)
