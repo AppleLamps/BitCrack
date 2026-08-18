@@ -12,7 +12,7 @@
 #if defined(__SIZEOF_INT128__)
 #include "field64.h"
 
-static FE_INLINE void fe_load(fe &r, const secp256k1::uint256 &a)
+static inline void fe_load(fe &r, const secp256k1::uint256 &a)
 {
 	r.n[0] = (uint64_t)a.v[0] | ((uint64_t)a.v[1] << 32);
 	r.n[1] = (uint64_t)a.v[2] | ((uint64_t)a.v[3] << 32);
@@ -20,7 +20,7 @@ static FE_INLINE void fe_load(fe &r, const secp256k1::uint256 &a)
 	r.n[3] = (uint64_t)a.v[6] | ((uint64_t)a.v[7] << 32);
 }
 
-static FE_INLINE void fe_store(secp256k1::uint256 &r, const fe &a)
+static inline void fe_store(secp256k1::uint256 &r, const fe &a)
 {
 	r.v[0] = (unsigned int)a.n[0];
 	r.v[1] = (unsigned int)(a.n[0] >> 32);
