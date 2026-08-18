@@ -231,7 +231,7 @@ void usage()
     printf("--kangaroo              Pollard kangaroo ECDLP (needs a public key, not an address)\n");
     printf("--pubkey KEY            secp256k1 public key (02/03 compressed or 04 uncompressed hex)\n");
     printf("--dp BITS               Distinguished-point trailing zero bits (0 = auto)\n");
-    printf("--kangaroo-opt N        Kangaroo flags: 0=serial 1=batch-add (default) 2=jump-table 4=dp-policy 8=falcon-swoop (or-able)\n");
+    printf("--kangaroo-opt N        Kangaroo flags: 0=serial 1=batch-add (default) 2=jump-table 4=dp-policy 8=falcon 16=adapt-herd (or-able)\n");
     printf("--kangaroo-bench        A/B test kangaroo variants against the baseline solver\n");
 }
 
@@ -475,7 +475,10 @@ int run()
             resultCallback(info);
             Logger::log(LogLevel::Info, "Jumps: " + util::formatThousands(r.jumps) +
                         "  Distinguished points: " + util::formatThousands(r.distinguished) +
-                        "  " + util::format((uint64_t)r.elapsedMs) + " ms");
+                        "  " + util::format((uint64_t)r.elapsedMs) + " ms" +
+                        (r.adaptRebalances > 0
+                         ? ("  adapt rebalances: " + util::format(r.adaptRebalances))
+                         : ""));
             return 0;
         } catch(std::string err) {
             Logger::log(LogLevel::Error, err);

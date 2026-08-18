@@ -17,6 +17,8 @@
 
 static const int kJumpCount = 32;
 static const int kFalconHeat = 8;
+static const int kAdaptBins = 64;
+static const int kAdaptRing = 64;
 
 struct Roo {
 	secp256k1::ecpoint p;
@@ -148,6 +150,34 @@ static secp256k1::uint256 shrBits(const secp256k1::uint256 &a, int bits)
 		}
 	}
 	return r;
+}
+
+static int scalarBin(secp256k1::uint256 val, const secp256k1::uint256 &start,
+                     const secp256k1::uint256 &width, int rangeBits)
+{
+	if(val.cmp(start) < 0) {
+		return 0;
+	}
+	secp256k1::uint256 off = val - start;
+	if(off.cmp(width) >= 0) {
+		return kAdaptBins - 1;
+	}
+	int shift = std::max(0, rangeBits - 20);
+	secp256k1::uint256 os = shrBits(off, shift);
+	secp256k1::uint256 ws = shrBits(width, shift);
+	uint64_t o = os.toUint64();
+	uint64_t w = ws.toUint64();
+	if(w == 0) {
+		return 0;
+	}
+	int bin = (int)((o * (uint64_t)kAdaptBins) / w);
+	if(bin < 0) {
+		return 0;
+	}
+	if(bin >= kAdaptBins) {
+		return kAdaptBins - 1;
+	}
+	return bin;
 }
 
 static secp256k1::uint256 randomBelow(crypto::Rng &rng, const secp256k1::uint256 &limit)
@@ -317,6 +347,12 @@ static std::string optLabel(int flags)
 		}
 		s += "falcon";
 	}
+	if(flags & KANGAROO_OPT_ADAPT) {
+		if(!s.empty()) {
+			s += "+";
+		}
+		s += "adapt";
+	}
 	return s;
 }
 
@@ -328,6 +364,7 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	out.jumps = 0;
 	out.distinguished = 0;
 	out.elapsedMs = 0;
+	out.adaptRebalances = 0;
 
 	if(config.start.isZero() || config.start.cmp(config.end) > 0) {
 		throw std::string("Invalid kangaroo keyspace");
@@ -340,6 +377,7 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	const bool useJumps = (config.optFlags & KANGAROO_OPT_JUMPS) != 0;
 	const bool useDp = (config.optFlags & KANGAROO_OPT_DP) != 0;
 	const bool useFalcon = (config.optFlags & KANGAROO_OPT_FALCON) != 0;
+	const bool useAdapt = (config.optFlags & KANGAROO_OPT_ADAPT) != 0;
 
 	const secp256k1::uint256 width = config.end - config.start + 1;
 	const int rangeBits = std::max(1, bitLength(width));
@@ -453,6 +491,12 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	std::atomic<uint64_t> jumps(0);
 	std::atomic<uint64_t> dps(0);
 	secp256k1::uint256 priv;
+	std::vector<unsigned long long> binHits((size_t)kAdaptBins, 0);
+	secp256k1::uint256 tameRing[kAdaptRing];
+	int tameRingCount = 0;
+	int tameRingPos = 0;
+	uint64_t herdSteps = 0;
+	uint64_t adaptRebalances = 0;
 
 	if(!config.quiet) {
 		secp256k1::ecpoint pubLog = config.pub;
@@ -506,6 +550,26 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 		std::lock_guard<std::mutex> lock(tableMutex);
 		dps.fetch_add(1, std::memory_order_relaxed);
 
+		if(useAdapt) {
+			// True tame-wild meetings are solutions. The histogram therefore
+			// also bins implied scalars tame.d - wild.d from unmatched DPs as
+			// a noisy density proxy, then reallocates herd mass toward hot bins.
+			if(!incoming.wild) {
+				tameRing[tameRingPos] = incoming.d;
+				tameRingPos = (tameRingPos + 1) % kAdaptRing;
+				if(tameRingCount < kAdaptRing) {
+					tameRingCount++;
+				}
+			} else if(tameRingCount > 0) {
+				for(int i = 0; i < tameRingCount; i++) {
+					secp256k1::uint256 implied = secp256k1::subModN(tameRing[i], incoming.d);
+					if(implied.cmp(config.start) >= 0 && implied.cmp(config.end) <= 0) {
+						binHits[(size_t)scalarBin(implied, config.start, width, rangeBits)]++;
+					}
+				}
+			}
+		}
+
 		auto it = table.find(key);
 		if(it == table.end()) {
 			table.emplace(key, incoming);
@@ -514,6 +578,9 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 			const DpEntry &wild = incoming.wild ? incoming : it->second;
 			secp256k1::uint256 k = secp256k1::subModN(tame.d, wild.d);
 			if(k.cmp(config.start) >= 0 && k.cmp(config.end) <= 0) {
+				if(useAdapt) {
+					binHits[(size_t)scalarBin(k, config.start, width, rangeBits)]++;
+				}
 				secp256k1::ecpoint check = secp256k1::multiplyPoint(k, g);
 				if(check == config.pub) {
 					priv = k;
@@ -605,9 +672,141 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 			std::string msg = util::formatThousands(j) + " jumps";
 			msg += " (" + util::format((uint64_t)rate) + " j/s)";
 			msg += "  DP: " + util::formatThousands(dps.load(std::memory_order_relaxed));
+			if(useAdapt) {
+				msg += "  adapt rebalances: " + util::format(adaptRebalances);
+			}
 			Logger::log(LogLevel::Info, msg);
 			lastStatus = now;
 			lastJumps = j;
+		}
+
+		herdSteps++;
+		if(useAdapt && !found.load(std::memory_order_relaxed) && (herdSteps % 256ull) == 0) {
+			std::vector<unsigned long long> localHits;
+			{
+				std::lock_guard<std::mutex> lock(tableMutex);
+				localHits = binHits;
+			}
+			unsigned long long totalHits = 0;
+			for(int b = 0; b < kAdaptBins; b++) {
+				totalHits += localHits[(size_t)b];
+			}
+
+			secp256k1::uint256 binW = width.div((uint32_t)kAdaptBins);
+			if(totalHits >= 8 && !binW.isZero()) {
+				int order[kAdaptBins];
+				for(int i = 0; i < kAdaptBins; i++) {
+					order[i] = i;
+				}
+				for(int i = 0; i < 8; i++) {
+					int best = i;
+					for(int j = i + 1; j < kAdaptBins; j++) {
+						if(localHits[(size_t)order[j]] > localHits[(size_t)order[best]]) {
+							best = j;
+						}
+					}
+					int tmp = order[i];
+					order[i] = order[best];
+					order[best] = tmp;
+				}
+
+				unsigned long long topSum = 0;
+				for(int i = 0; i < 8; i++) {
+					topSum += localHits[(size_t)order[i]];
+				}
+
+				if(topSum > 0) {
+					int keep = nTame / 4;
+					int uniform = nTame / 4;
+					int hot = nTame - keep - uniform;
+					if(hot < 0) {
+						hot = 0;
+					}
+
+					std::vector<secp256k1::uint256> newD;
+					newD.reserve((size_t)(hot + uniform));
+					{
+						std::lock_guard<std::mutex> rlock(rngMutex);
+						for(int i = 0; i < uniform; i++) {
+							secp256k1::uint256 s = config.start + randomBelow(rng, width);
+							if(s.cmp(config.end) > 0) {
+								s = config.end;
+							}
+							newD.push_back(s);
+						}
+						for(int i = 0; i < hot; i++) {
+							secp256k1::uint256 r256 = randomBelow(rng, secp256k1::uint256((uint64_t)topSum));
+							unsigned long long r = r256.toUint64();
+							int pick = order[0];
+							unsigned long long acc = 0;
+							for(int t = 0; t < 8; t++) {
+								acc += localHits[(size_t)order[t]];
+								if(r < acc) {
+									pick = order[t];
+									break;
+								}
+							}
+							secp256k1::uint256 bStart = config.start + binW * (uint32_t)pick;
+							secp256k1::uint256 bEnd;
+							if(pick >= kAdaptBins - 1) {
+								bEnd = config.end;
+							} else {
+								bEnd = bStart + binW;
+								if(bEnd.cmp(config.end) > 0) {
+									bEnd = config.end;
+								}
+							}
+							if(bStart.cmp(bEnd) >= 0) {
+								secp256k1::uint256 s = config.start + randomBelow(rng, width);
+								if(s.cmp(config.end) > 0) {
+									s = config.end;
+								}
+								newD.push_back(s);
+							} else {
+								secp256k1::uint256 bWidth = bEnd - bStart;
+								if(bWidth.isZero()) {
+									newD.push_back(bStart);
+								} else {
+									newD.push_back(bStart + randomBelow(rng, bWidth));
+								}
+							}
+						}
+					}
+
+					if(!newD.empty()) {
+						std::vector<secp256k1::ecpoint> newP;
+						secp256k1::generateKeyPairsBulk(g, newD, newP);
+						int idx = 0;
+						for(int i = keep; i < nTame && idx < (int)newD.size(); i++, idx++) {
+							herd[(size_t)i].d = newD[(size_t)idx];
+							herd[(size_t)i].p = newP[(size_t)idx];
+							herd[(size_t)i].hops = 0;
+						}
+					}
+
+					int wRefresh = nWild / 4;
+					if(wRefresh > 0) {
+						std::vector<secp256k1::uint256> wOff((size_t)wRefresh);
+						{
+							std::lock_guard<std::mutex> rlock(rngMutex);
+							for(int i = 0; i < wRefresh; i++) {
+								wOff[(size_t)i] = randomBelow(rng, width);
+							}
+						}
+						std::vector<secp256k1::ecpoint> wPts;
+						secp256k1::generateKeyPairsBulk(g, wOff, wPts);
+						secp256k1::addPointsBulk(wPts, config.pub, threads);
+						for(int i = 0; i < wRefresh; i++) {
+							int hi = nTame + i;
+							herd[(size_t)hi].d = wOff[(size_t)i];
+							herd[(size_t)hi].p = wPts[(size_t)i];
+							herd[(size_t)hi].hops = 0;
+						}
+					}
+
+					adaptRebalances++;
+				}
+			}
 		}
 	}
 
@@ -616,6 +815,7 @@ KangarooResult runKangaroo(const KangarooConfig &config)
 	out.jumps = jumps.load();
 	out.distinguished = dps.load();
 	out.elapsedMs = util::getSystemTime() - t0;
+	out.adaptRebalances = adaptRebalances;
 	return out;
 }
 
@@ -641,6 +841,14 @@ static void logBench(const std::string &msg)
 	Logger::log(LogLevel::Info, msg);
 }
 
+static std::string rebalTag(const KangarooResult &r)
+{
+	if(r.adaptRebalances == 0) {
+		return "";
+	}
+	return "  rebal=" + util::format(r.adaptRebalances);
+}
+
 int runKangarooBench(const KangarooConfig &baseIn)
 {
 	KangarooConfig base = baseIn;
@@ -656,9 +864,10 @@ int runKangarooBench(const KangarooConfig &baseIn)
 		KANGAROO_OPT_BATCH_ADD,
 		KANGAROO_OPT_JUMPS,
 		KANGAROO_OPT_DP,
-		KANGAROO_OPT_BATCH_ADD | KANGAROO_OPT_FALCON
+		KANGAROO_OPT_BATCH_ADD | KANGAROO_OPT_FALCON,
+		KANGAROO_OPT_BATCH_ADD | KANGAROO_OPT_ADAPT
 	};
-	const int nVar = 5;
+	const int nVar = 6;
 
 	logBench("Kangaroo variant bench");
 	logBench("Herd: " + util::format((uint64_t)base.herdSize) +
@@ -692,7 +901,7 @@ int runKangarooBench(const KangarooConfig &baseIn)
 				ok = false;
 			} else {
 				line += "ok  jumps=" + util::formatThousands(r.jumps) +
-				        "  " + util::format((uint64_t)r.elapsedMs) + " ms";
+				        "  " + util::format((uint64_t)r.elapsedMs) + " ms" + rebalTag(r);
 			}
 			logBench(line);
 		}
@@ -706,14 +915,15 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	secp256k1::uint256 tStart(1);
 	secp256k1::uint256 tEnd((uint64_t)1 << 36);
 	secp256k1::uint256 tKey((uint64_t)0x123456789ULL);
-	double jps[5] = {0, 0, 0, 0, 0};
+	double jps[6] = {0, 0, 0, 0, 0, 0};
 	for(int v = 0; v < nVar; v++) {
 		KangarooConfig c = benchCfg(base, tStart, tEnd, tKey, variants[v], 2000);
 		KangarooResult r = runKangaroo(c);
 		double secs = (double)r.elapsedMs / 1000.0;
 		jps[v] = secs > 0 ? (double)r.jumps / secs : 0;
 		logBench(optLabel(variants[v]) + "  " + util::formatThousands(r.jumps) + " jumps  " +
-		         util::format("%.0f", jps[v]) + " j/s  dp=" + util::formatThousands(r.distinguished));
+		         util::format("%.0f", jps[v]) + " j/s  dp=" + util::formatThousands(r.distinguished) +
+		         rebalTag(r));
 	}
 
 	struct SolveKey {
@@ -730,9 +940,9 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	const int nSolve = 4;
 
 	logBench("--- solve (range 2^22, 4 keys, 45s cap) ---");
-	double meanJumps[5] = {0, 0, 0, 0, 0};
-	double meanMs[5] = {0, 0, 0, 0, 0};
-	int foundN[5] = {0, 0, 0, 0, 0};
+	double meanJumps[6] = {0, 0, 0, 0, 0, 0};
+	double meanMs[6] = {0, 0, 0, 0, 0, 0};
+	int foundN[6] = {0, 0, 0, 0, 0, 0};
 	for(int v = 0; v < nVar; v++) {
 		uint64_t sumJ = 0;
 		uint64_t sumMs = 0;
@@ -747,7 +957,7 @@ int runKangarooBench(const KangarooConfig &baseIn)
 				sumJ += r.jumps;
 				sumMs += r.elapsedMs;
 				line += "ok  jumps=" + util::formatThousands(r.jumps) +
-				        "  " + util::format((uint64_t)r.elapsedMs) + " ms";
+				        "  " + util::format((uint64_t)r.elapsedMs) + " ms" + rebalTag(r);
 			}
 			logBench(line);
 		}
@@ -764,9 +974,9 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	secp256k1::uint256 mStart((uint64_t)0x2000000);
 	secp256k1::uint256 mEnd((uint64_t)0x3FFFFFF);
 	secp256k1::uint256 mKeys[2] = {secp256k1::uint256((uint64_t)0x2ABCDEF), secp256k1::uint256((uint64_t)0x35E0001)};
-	double meanJumps26[5] = {0, 0, 0, 0, 0};
-	double meanMs26[5] = {0, 0, 0, 0, 0};
-	int found26[5] = {0, 0, 0, 0, 0};
+	double meanJumps26[6] = {0, 0, 0, 0, 0, 0};
+	double meanMs26[6] = {0, 0, 0, 0, 0, 0};
+	int found26[6] = {0, 0, 0, 0, 0, 0};
 	for(int v = 0; v < nVar; v++) {
 		uint64_t sumJ = 0;
 		uint64_t sumMs = 0;
@@ -781,7 +991,7 @@ int runKangarooBench(const KangarooConfig &baseIn)
 				sumJ += r.jumps;
 				sumMs += r.elapsedMs;
 				line += "ok  jumps=" + util::formatThousands(r.jumps) +
-				        "  " + util::format((uint64_t)r.elapsedMs) + " ms";
+				        "  " + util::format((uint64_t)r.elapsedMs) + " ms" + rebalTag(r);
 			}
 			logBench(line);
 		}
@@ -831,6 +1041,13 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	} else if(foundN[4] > 0 && meanJumps[4] > 0 && meanJumps[1] > 0 &&
 	          meanJumps[4] < meanJumps[1] * 0.95) {
 		combo |= KANGAROO_OPT_FALCON;
+	}
+	if(found26[5] > 0 && meanJumps26[5] > 0 && meanJumps26[1] > 0 &&
+	   meanJumps26[5] < meanJumps26[1] * 0.95) {
+		combo |= KANGAROO_OPT_ADAPT;
+	} else if(foundN[5] > 0 && meanJumps[5] > 0 && meanJumps[1] > 0 &&
+	          meanJumps[5] < meanJumps[1] * 0.95) {
+		combo |= KANGAROO_OPT_ADAPT;
 	}
 
 	logBench("--- summary ---");

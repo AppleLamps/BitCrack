@@ -9,7 +9,8 @@ enum KangarooOpt {
 	KANGAROO_OPT_BATCH_ADD = 1,
 	KANGAROO_OPT_JUMPS = 2,
 	KANGAROO_OPT_DP = 4,
-	KANGAROO_OPT_FALCON = 8
+	KANGAROO_OPT_FALCON = 8,
+	KANGAROO_OPT_ADAPT = 16
 };
 
 struct KangarooConfig {
@@ -33,6 +34,7 @@ struct KangarooResult {
 	uint64_t jumps;
 	uint64_t distinguished;
 	uint64_t elapsedMs;
+	uint64_t adaptRebalances;
 };
 
 KangarooResult runKangaroo(const KangarooConfig &config);
