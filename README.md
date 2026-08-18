@@ -181,6 +181,14 @@ On CPU, increase `-p` (keys per thread) to keep the batch large. Defaults are th
 ./bin/cpuBitCrack -t 4 -p 4096 --keyspace START:END <address>
 ```
 
+Pollard kangaroo (CPU) solves a key in a known range from the **public key**, not from an address. Expected work is about `O(sqrt(range))` jumps. Puzzle addresses with no revealed public key still need brute force.
+
+```
+./bin/cpuBitCrack --kangaroo --keyspace START:END --pubkey 02...
+```
+
+`-t` is worker threads. `-p` is herd size (default 64 per thread). `--dp` sets distinguished-point bits (0 = auto).
+
 Build all backends:
 ```
 make BUILD_CUDA=1 BUILD_OPENCL=1 BUILD_CPU=1
