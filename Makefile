@@ -1,6 +1,6 @@
 
 CUR_DIR=$(shell pwd)
-DIRS=util AddressUtil CmdParse CryptoUtil KeyFinderLib CLKeySearchDevice CudaKeySearchDevice CpuKeySearchDevice cudaMath clUtil cudaUtil secp256k1lib Logger embedcl
+DIRS=util AddressUtil CmdParse CryptoUtil KangarooLib KeyFinderLib CLKeySearchDevice CudaKeySearchDevice CpuKeySearchDevice cudaMath clUtil cudaUtil secp256k1lib Logger embedcl
 
 INCLUDE = $(foreach d, $(DIRS), -I$(CUR_DIR)/$d)
 
@@ -42,7 +42,7 @@ export OPENCL_INCLUDE
 export BUILD_OPENCL
 export BUILD_CUDA
 
-TARGETS=dir_addressutil dir_cmdparse dir_cryptoutil dir_keyfinderlib dir_keyfinder dir_secp256k1lib dir_util dir_logger dir_addrgen
+TARGETS=dir_addressutil dir_cmdparse dir_cryptoutil dir_keyfinderlib dir_keyfinder dir_secp256k1lib dir_util dir_logger dir_addrgen dir_kangaroolib dir_kangaroo
 
 ifeq ($(BUILD_CUDA),1)
 	TARGETS:=${TARGETS} dir_cudaKeySearchDevice dir_cudautil
@@ -121,6 +121,12 @@ dir_logger:
 
 dir_addrgen:	dir_cmdparse dir_addressutil dir_secp256k1lib
 	make --directory AddrGen
+
+dir_kangaroolib:	dir_secp256k1lib dir_util dir_logger
+	make --directory KangarooLib
+
+dir_kangaroo:	dir_kangaroolib dir_cmdparse
+	make --directory Kangaroo
 dir_clunittest:	dir_clutil
 	make --directory CLUnitTests
 
@@ -141,5 +147,7 @@ clean:
 	make --directory embedcl clean
 	make --directory CLUnitTests clean
 	make --directory CpuKeySearchDevice clean
+	make --directory KangarooLib clean
+	make --directory Kangaroo clean
 	rm -rf ${LIBDIR}
 	rm -rf ${BINDIR}

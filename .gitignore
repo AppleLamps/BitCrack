@@ -288,3 +288,9 @@ __pycache__/
 # tools/
 
 TestData/
+
+# Kangaroo module build artifacts
+Kangaroo/kangaroo.bin
+KangarooLib/*.o
+lib/
+bin/

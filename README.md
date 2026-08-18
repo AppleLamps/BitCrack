@@ -207,3 +207,25 @@ If you find this project useful and would like to support it, consider making a 
 ### Contact
 
 Send any questions or comments to bitcrack.project@gmail.com
+
+## Kangaroo: interval discrete logarithm solver
+
+This fork adds `bin/kangaroo`, a Pollard kangaroo solver for the case where the **public
+key** is known and the private key is known to lie in an interval. BitCrack proper scans a
+keyspace against address hashes at `O(w)` cost; the kangaroo walk costs `O(sqrt(w))` but
+needs the public key, so the two tools cover different situations.
+
+The herd is **charge balanced**: alongside the usual tame (`k=0`) and wild (`k=+1`)
+kangaroos it runs a third species seeded at the inverse of the target and reflected about
+the interval midpoint (`k=-1`). Collisions only determine the key when the two charges
+differ, so the classic 50/50 tame/wild split discards half of every collision it produces.
+Three balanced charges raise that productive share from 1/2 to 2/3.
+
+```
+make BUILD_CPU=1 dir_kangaroo
+./bin/kangaroo -k <pubkey> --bits 40 --herd 128 -t 8
+./bin/kangaroo --bits 32 --benchmark 200 -t 4      # A/B the charge sets
+```
+
+See [KANGAROO.md](KANGAROO.md) for the theory, the measurements, and the implementation
+notes.
