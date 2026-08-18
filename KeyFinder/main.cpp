@@ -25,6 +25,8 @@
 #include "CpuKeySearchDevice.h"
 #endif
 
+#include "Kangaroo.h"
+
 typedef struct {
     // startKey is the first key. We store it so that if the --continue
     // option is used, the correct progress is displayed. startKey and
@@ -60,6 +62,12 @@ typedef struct {
     secp256k1::uint256 stride = 1;
 
     bool follow = false;
+
+    bool kangaroo = false;
+    bool kangarooBench = false;
+    std::string pubKey;
+    int dpBits = 0;
+    int kangarooOpt = KANGAROO_OPT_BATCH_ADD;
 }RunConfig;
 
 static RunConfig _config;
@@ -220,6 +228,11 @@ void usage()
     printf("--stride N              Increment by N keys at a time\n");
     printf("--share M/N             Divide the keyspace into N equal shares, process the Mth share\n");
     printf("--continue FILE         Save/load progress from FILE\n");
+    printf("--kangaroo              Pollard kangaroo ECDLP (needs a public key, not an address)\n");
+    printf("--pubkey KEY            secp256k1 public key (02/03 compressed or 04 uncompressed hex)\n");
+    printf("--dp BITS               Distinguished-point trailing zero bits (0 = auto)\n");
+    printf("--kangaroo-opt N        Kangaroo flags: 0=serial 1=batch-add (default) 2=jump-table 4=dp-policy 8=falcon 16=adapt-herd (or-able)\n");
+    printf("--kangaroo-bench        A/B test kangaroo variants against the baseline solver\n");
 }
 
 
@@ -407,6 +420,72 @@ int run()
         return 1;
     }
 
+    if(_config.kangaroo || _config.kangarooBench) {
+        DeviceParameters params = getDefaultParameters(_devices[_config.device]);
+        if(_config.threads == 0) {
+            _config.threads = params.threads;
+        }
+        int herd = (int)_config.pointsPerThread;
+        if(herd == 0) {
+            herd = 64 * (int)_config.threads;
+        }
+
+        KangarooConfig kc;
+        kc.start = _config.nextKey;
+        kc.end = _config.endKey;
+        kc.threads = (int)_config.threads;
+        kc.herdSize = herd;
+        kc.dpBits = _config.dpBits;
+        kc.optFlags = _config.kangarooOpt;
+        kc.quiet = false;
+        kc.statusIntervalMs = _config.statusInterval;
+        kc.maxMs = 0;
+        kc.maxJumps = 0;
+
+        if(_config.kangarooBench) {
+            try {
+                return runKangarooBench(kc);
+            } catch(std::string err) {
+                Logger::log(LogLevel::Error, err);
+                return 1;
+            }
+        }
+
+        secp256k1::ecpoint pub;
+        try {
+            pub = secp256k1::parsePublicKey(_config.pubKey);
+        } catch(std::string err) {
+            Logger::log(LogLevel::Error, "Invalid public key: " + err);
+            return 1;
+        }
+        kc.pub = pub;
+
+        try {
+            KangarooResult r = runKangaroo(kc);
+            if(!r.found) {
+                Logger::log(LogLevel::Error, "Kangaroo exited without a key");
+                return 1;
+            }
+
+            KeySearchResult info;
+            info.privateKey = r.privateKey;
+            info.publicKey = pub;
+            info.compressed = true;
+            info.address = Address::fromPublicKey(pub, true);
+            resultCallback(info);
+            Logger::log(LogLevel::Info, "Jumps: " + util::formatThousands(r.jumps) +
+                        "  Distinguished points: " + util::formatThousands(r.distinguished) +
+                        "  " + util::format((uint64_t)r.elapsedMs) + " ms" +
+                        (r.adaptRebalances > 0
+                         ? ("  adapt rebalances: " + util::format(r.adaptRebalances))
+                         : ""));
+            return 0;
+        } catch(std::string err) {
+            Logger::log(LogLevel::Error, err);
+            return 1;
+        }
+    }
+
     Logger::log(LogLevel::Info, "Compression: " + getCompressionString(_config.compression));
     Logger::log(LogLevel::Info, "Starting at: " + _config.nextKey.toString());
     Logger::log(LogLevel::Info, "Ending at:   " + _config.endKey.toString());
@@ -551,6 +630,11 @@ int main(int argc, char **argv)
     parser.add("", "--continue", true);
     parser.add("", "--share", true);
     parser.add("", "--stride", true);
+    parser.add("", "--kangaroo", false);
+    parser.add("", "--pubkey", true);
+    parser.add("", "--dp", true);
+    parser.add("", "--kangaroo-opt", true);
+    parser.add("", "--kangaroo-bench", false);
 
     try {
         parser.parse(argc, argv);
@@ -636,6 +720,16 @@ int main(int argc, char **argv)
                 }
             } else if(optArg.equals("-f", "--follow")) {
                 _config.follow = true;
+            } else if(optArg.equals("", "--kangaroo")) {
+                _config.kangaroo = true;
+            } else if(optArg.equals("", "--kangaroo-bench")) {
+                _config.kangarooBench = true;
+            } else if(optArg.equals("", "--pubkey")) {
+                _config.pubKey = optArg.arg;
+            } else if(optArg.equals("", "--dp")) {
+                _config.dpBits = (int)util::parseUInt32(optArg.arg);
+            } else if(optArg.equals("", "--kangaroo-opt")) {
+                _config.kangarooOpt = (int)util::parseUInt32(optArg.arg);
             }
 
 		} catch(std::string err) {
@@ -658,9 +752,36 @@ int main(int argc, char **argv)
 	// Parse operands
 	std::vector<std::string> ops = parser.getOperands();
 
-    // If there are no operands, then we must be reading from a file, otherwise
-    // expect addresses on the commandline
-	if(ops.size() == 0) {
+    if(_config.kangarooBench) {
+        if(ops.size() != 0) {
+            Logger::log(LogLevel::Error, "Kangaroo bench takes no address operands");
+            return 1;
+        }
+        if(_config.targetsFile.length() != 0) {
+            Logger::log(LogLevel::Error, "Kangaroo bench does not read address files");
+            return 1;
+        }
+    } else if(_config.kangaroo) {
+        if(_config.pubKey.empty()) {
+            if(ops.size() == 1) {
+                _config.pubKey = ops[0];
+            } else if(ops.size() == 0) {
+                Logger::log(LogLevel::Error, "Kangaroo mode requires --pubkey (or a public key operand)");
+                usage();
+                return 1;
+            } else {
+                Logger::log(LogLevel::Error, "Kangaroo mode takes one public key, not addresses");
+                return 1;
+            }
+        } else if(ops.size() != 0) {
+            Logger::log(LogLevel::Error, "Kangaroo mode takes --pubkey, not address operands");
+            return 1;
+        }
+        if(_config.targetsFile.length() != 0) {
+            Logger::log(LogLevel::Error, "Kangaroo mode does not read address files");
+            return 1;
+        }
+    } else if(ops.size() == 0) {
 		if(_config.targetsFile.length() == 0) {
 			Logger::log(LogLevel::Error, "Missing arguments");
 			usage();

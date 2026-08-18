@@ -1054,6 +1054,224 @@ void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, in
 #endif
 }
 
+void secp256k1::addPointsIndependent(std::vector<ecpoint> &points, const std::vector<ecpoint> &addends, int threads)
+{
+	size_t n = points.size();
+	if(n == 0) {
+		return;
+	}
+	if(addends.size() != n) {
+		throw std::string("addPointsIndependent size mismatch");
+	}
+	if(threads < 1) {
+		threads = 1;
+	}
+
+#if defined(__SIZEOF_INT128__)
+	std::vector<fe> run(n);
+	std::vector<unsigned char> op(n);
+
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
+	for(size_t i = 0; i < n; i++) {
+#endif
+		fe px, py, qx, qy;
+		fe_load(px, points[i].x);
+		fe_load(py, points[i].y);
+		fe_load(qx, addends[i].x);
+		fe_load(qy, addends[i].y);
+
+		if(fe_is_inf(qx, qy)) {
+			op[i] = 4;
+			fe_set1(run[i]);
+		} else if(fe_is_inf(px, py)) {
+			op[i] = 1;
+			fe_set1(run[i]);
+		} else if(fe_eq(px, qx)) {
+			if(fe_eq(py, qy)) {
+				op[i] = 2;
+				fe_add(run[i], py, py);
+			} else {
+				op[i] = 3;
+				fe_set1(run[i]);
+			}
+		} else {
+			op[i] = 0;
+			fe_sub(run[i], px, qx);
+		}
+	}
+
+#ifdef _OPENMP
+	if(threads > 1 && n > 1) {
+		#pragma omp parallel num_threads(threads)
+		{
+			int tid = omp_get_thread_num();
+			int nt = omp_get_num_threads();
+			size_t chunk = (n + (size_t)nt - 1) / (size_t)nt;
+			size_t begin = (size_t)tid * chunk;
+			size_t end = begin + chunk;
+			if(begin > n) {
+				begin = n;
+			}
+			if(end > n) {
+				end = n;
+			}
+			bulkInversionFeRange(run, begin, end);
+		}
+	} else {
+		bulkInversionFeRange(run, 0, n);
+	}
+#else
+	bulkInversionFeRange(run, 0, n);
+	(void)threads;
+#endif
+
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
+	for(size_t i = 0; i < n; i++) {
+#endif
+		if(op[i] == 4) {
+			continue;
+		}
+		if(op[i] == 1) {
+			points[i] = addends[i];
+			continue;
+		}
+		if(op[i] == 3) {
+			points[i] = pointAtInfinity();
+			continue;
+		}
+
+		fe px, py, qx, qy, s, rx, ry, tmp;
+		fe_load(px, points[i].x);
+		fe_load(py, points[i].y);
+
+		if(op[i] == 2) {
+			fe_sqr(tmp, px);
+			fe_add(s, tmp, tmp);
+			fe_add(s, s, tmp);
+			fe_mul(s, s, run[i]);
+			fe_sqr(tmp, s);
+			fe_sub(rx, tmp, px);
+			fe_sub(rx, rx, px);
+			fe_sub(tmp, px, rx);
+			fe_mul(ry, s, tmp);
+			fe_sub(ry, ry, py);
+			fe_store(points[i].x, rx);
+			fe_store(points[i].y, ry);
+			continue;
+		}
+
+		fe_load(qx, addends[i].x);
+		fe_load(qy, addends[i].y);
+		fe_sub(tmp, py, qy);
+		fe_mul(s, tmp, run[i]);
+		fe_sqr(tmp, s);
+		fe_sub(rx, tmp, px);
+		fe_sub(rx, rx, qx);
+		fe_sub(tmp, px, rx);
+		fe_mul(ry, s, tmp);
+		fe_sub(ry, ry, py);
+		fe_store(points[i].x, rx);
+		fe_store(points[i].y, ry);
+	}
+#else
+	std::vector<uint256> run(n);
+	std::vector<unsigned char> op(n);
+
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
+	for(size_t i = 0; i < n; i++) {
+#endif
+		if(isPointAtInfinity(addends[i])) {
+			op[i] = 4;
+			run[i] = uint256(1);
+		} else if(isPointAtInfinity(points[i])) {
+			op[i] = 1;
+			run[i] = uint256(1);
+		} else if(points[i].x == addends[i].x) {
+			if(points[i].y == addends[i].y) {
+				op[i] = 2;
+				run[i] = addModP(points[i].y, points[i].y);
+			} else {
+				op[i] = 3;
+				run[i] = uint256(1);
+			}
+		} else {
+			op[i] = 0;
+			run[i] = subModP(points[i].x, addends[i].x);
+		}
+	}
+
+#ifdef _OPENMP
+	if(threads > 1 && n > 1) {
+		#pragma omp parallel num_threads(threads)
+		{
+			int tid = omp_get_thread_num();
+			int nt = omp_get_num_threads();
+			size_t chunk = (n + (size_t)nt - 1) / (size_t)nt;
+			size_t begin = (size_t)tid * chunk;
+			size_t end = begin + chunk;
+			if(begin > n) {
+				begin = n;
+			}
+			if(end > n) {
+				end = n;
+			}
+			bulkInversionModPRange(run, begin, end);
+		}
+	} else {
+		bulkInversionModP(run);
+	}
+#else
+	bulkInversionModP(run);
+	(void)threads;
+#endif
+
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
+	for(size_t i = 0; i < n; i++) {
+#endif
+		if(op[i] == 4) {
+			continue;
+		}
+		if(op[i] == 1) {
+			points[i] = addends[i];
+			continue;
+		}
+		if(op[i] == 3) {
+			points[i] = pointAtInfinity();
+			continue;
+		}
+
+		if(op[i] == 2) {
+			uint256 x3 = multiplyModP(points[i].x, points[i].x);
+			uint256 s = multiplyModP(addModP(addModP(x3, x3), x3), run[i]);
+			uint256 rx = subModP(subModP(multiplyModP(s, s), points[i].x), points[i].x);
+			uint256 ry = subModP(multiplyModP(s, subModP(points[i].x, rx)), points[i].y);
+			points[i].x = rx;
+			points[i].y = ry;
+			continue;
+		}
+
+		uint256 rise = subModP(points[i].y, addends[i].y);
+		uint256 s = multiplyModP(rise, run[i]);
+		uint256 rx = subModP(subModP(multiplyModP(s, s), points[i].x), addends[i].x);
+		uint256 ry = subModP(multiplyModP(s, subModP(points[i].x, rx)), points[i].y);
+		points[i].x = rx;
+		points[i].y = ry;
+	}
+#endif
+}
+
 void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64_t qx[4], const uint64_t qy[4], int threads)
 {
 	if(n == 0) {
@@ -1413,21 +1631,60 @@ void secp256k1::generateKeyPairsBulk(const ecpoint &basePoint, std::vector<uint2
 	}
 }
 
+static uint256 powModP(uint256 base, const uint256 &exp)
+{
+	uint256 result(1);
+	for(int i = 0; i < 256; i++) {
+		if(exp.v[i / 32] & (1u << (i % 32))) {
+			result = secp256k1::multiplyModP(result, base);
+		}
+		base = secp256k1::multiplyModP(base, base);
+	}
+	return result;
+}
+
+static std::string stripPubKeyHex(const std::string &s)
+{
+	if(s.length() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		return s.substr(2);
+	}
+	return s;
+}
+
 /**
- * Parses a public key. Expected format is 04<64 hex digits for X><64 hex digits for Y>
+ * Parses a public key. Compressed 02/03 + 32-byte X, or uncompressed
+ * 04 + 32-byte X + 32-byte Y (hex, optional 0x prefix).
  */
 secp256k1::ecpoint secp256k1::parsePublicKey(const std::string &pubKeyString)
 {
-	if(pubKeyString.length() != 130) {
+	std::string s = stripPubKeyHex(pubKeyString);
+
+	if(s.length() == 66 && s[0] == '0' && (s[1] == '2' || s[1] == '3')) {
+		uint256 x(s.substr(2, 64));
+		uint256 x2 = multiplyModP(x, x);
+		uint256 rhs = addModP(multiplyModP(x2, x), uint256(7));
+		uint256 y = powModP(rhs, P.add(1).div(4));
+		bool wantOdd = (s[1] == '3');
+		if(y.isEven() == wantOdd) {
+			y = negModP(y);
+		}
+		ecpoint p(x, y);
+		if(!pointExists(p)) {
+			throw std::string("Invalid public key");
+		}
+		return p;
+	}
+
+	if(s.length() != 130) {
 		throw std::string("Invalid public key");
 	}
 
-	if(pubKeyString[0] != '0' || pubKeyString[1] != '4') {
+	if(s[0] != '0' || s[1] != '4') {
 		throw std::string("Invalid public key");
 	}
 
-	std::string xString = pubKeyString.substr(2, 64);
-	std::string yString = pubKeyString.substr(66, 64);
+	std::string xString = s.substr(2, 64);
+	std::string yString = s.substr(66, 64);
 
 	uint256 x(xString);
 	uint256 y(yString);

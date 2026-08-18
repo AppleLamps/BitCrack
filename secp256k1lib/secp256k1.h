@@ -355,6 +355,9 @@ namespace secp256k1 {
 	// threads > 1 splits the batch across workers (OpenMP when available).
 	void addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, int threads = 1);
 
+	// points[i] += addends[i] with one Montgomery inversion per worker chunk.
+	void addPointsIndependent(std::vector<ecpoint> &points, const std::vector<ecpoint> &addends, int threads = 1);
+
 	// Same as addPointsBulk, but x/y are n points stored as 4 little-endian
 	// 64-bit limbs each (n*4). qx/qy are Q in the same limb layout.
 	// Skips point-at-infinity checks (puzzle search never hits infinity);
@@ -376,6 +379,7 @@ namespace secp256k1 {
 	void generateKeyPairsBulk(unsigned int count, const ecpoint &basePoint, std::vector<uint256> &privKeysOut, std::vector<ecpoint> &pubKeysOut);
 	void generateKeyPairsBulk(const ecpoint &basePoint, std::vector<uint256> &privKeys, std::vector<ecpoint> &pubKeysOut);
 
+	// Compressed (02/03 + X) or uncompressed (04 + X + Y) hex; optional 0x prefix.
 	ecpoint parsePublicKey(const std::string &pubKeyString);
 }
 
