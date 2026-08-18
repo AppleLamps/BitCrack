@@ -376,6 +376,7 @@ namespace secp256k1 {
 	void generateKeyPairsBulk(unsigned int count, const ecpoint &basePoint, std::vector<uint256> &privKeysOut, std::vector<ecpoint> &pubKeysOut);
 	void generateKeyPairsBulk(const ecpoint &basePoint, std::vector<uint256> &privKeys, std::vector<ecpoint> &pubKeysOut);
 
+	// Compressed (02/03 + X) or uncompressed (04 + X + Y) hex; optional 0x prefix.
 	ecpoint parsePublicKey(const std::string &pubKeyString);
 }
 

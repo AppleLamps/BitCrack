@@ -1413,21 +1413,60 @@ void secp256k1::generateKeyPairsBulk(const ecpoint &basePoint, std::vector<uint2
 	}
 }
 
+static uint256 powModP(uint256 base, const uint256 &exp)
+{
+	uint256 result(1);
+	for(int i = 0; i < 256; i++) {
+		if(exp.v[i / 32] & (1u << (i % 32))) {
+			result = secp256k1::multiplyModP(result, base);
+		}
+		base = secp256k1::multiplyModP(base, base);
+	}
+	return result;
+}
+
+static std::string stripPubKeyHex(const std::string &s)
+{
+	if(s.length() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
+		return s.substr(2);
+	}
+	return s;
+}
+
 /**
- * Parses a public key. Expected format is 04<64 hex digits for X><64 hex digits for Y>
+ * Parses a public key. Compressed 02/03 + 32-byte X, or uncompressed
+ * 04 + 32-byte X + 32-byte Y (hex, optional 0x prefix).
  */
 secp256k1::ecpoint secp256k1::parsePublicKey(const std::string &pubKeyString)
 {
-	if(pubKeyString.length() != 130) {
+	std::string s = stripPubKeyHex(pubKeyString);
+
+	if(s.length() == 66 && s[0] == '0' && (s[1] == '2' || s[1] == '3')) {
+		uint256 x(s.substr(2, 64));
+		uint256 x2 = multiplyModP(x, x);
+		uint256 rhs = addModP(multiplyModP(x2, x), uint256(7));
+		uint256 y = powModP(rhs, P.add(1).div(4));
+		bool wantOdd = (s[1] == '3');
+		if(y.isEven() == wantOdd) {
+			y = negModP(y);
+		}
+		ecpoint p(x, y);
+		if(!pointExists(p)) {
+			throw std::string("Invalid public key");
+		}
+		return p;
+	}
+
+	if(s.length() != 130) {
 		throw std::string("Invalid public key");
 	}
 
-	if(pubKeyString[0] != '0' || pubKeyString[1] != '4') {
+	if(s[0] != '0' || s[1] != '4') {
 		throw std::string("Invalid public key");
 	}
 
-	std::string xString = pubKeyString.substr(2, 64);
-	std::string yString = pubKeyString.substr(66, 64);
+	std::string xString = s.substr(2, 64);
+	std::string yString = s.substr(66, 64);
 
 	uint256 x(xString);
 	uint256 y(yString);
