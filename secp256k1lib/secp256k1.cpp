@@ -12,6 +12,8 @@ static uint256 _ONE(1);
 static uint256 _ZERO;
 static crypto::Rng _rng;
 
+static void bulkInversionModP(std::vector<uint256> &in);
+
 static inline void addc(unsigned int a, unsigned int b, unsigned int carryIn, unsigned int &sum, int &carryOut)
 {
 	uint64_t sum64 = (uint64_t)a + b + carryIn;
@@ -713,6 +715,70 @@ ecpoint secp256k1::addPoints(const ecpoint &p1, const ecpoint &p2)
 	return sum;
 }
 
+void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q)
+{
+	size_t n = points.size();
+	if(n == 0) {
+		return;
+	}
+
+	if(isPointAtInfinity(q)) {
+		return;
+	}
+
+	std::vector<uint256> run(n);
+	std::vector<unsigned char> op(n);
+
+	for(size_t i = 0; i < n; i++) {
+		if(isPointAtInfinity(points[i])) {
+			op[i] = 1;
+			run[i] = uint256(1);
+		} else if(points[i].x == q.x) {
+			if(points[i].y == q.y) {
+				op[i] = 2;
+				run[i] = addModP(points[i].y, points[i].y);
+			} else {
+				op[i] = 3;
+				run[i] = uint256(1);
+			}
+		} else {
+			op[i] = 0;
+			run[i] = subModP(points[i].x, q.x);
+		}
+	}
+
+	bulkInversionModP(run);
+
+	for(size_t i = 0; i < n; i++) {
+		if(op[i] == 1) {
+			points[i] = q;
+			continue;
+		}
+
+		if(op[i] == 3) {
+			points[i] = pointAtInfinity();
+			continue;
+		}
+
+		if(op[i] == 2) {
+			uint256 x3 = multiplyModP(points[i].x, points[i].x);
+			uint256 s = multiplyModP(addModP(addModP(x3, x3), x3), run[i]);
+			uint256 rx = subModP(subModP(multiplyModP(s, s), points[i].x), points[i].x);
+			uint256 ry = subModP(multiplyModP(s, subModP(points[i].x, rx)), points[i].y);
+			points[i].x = rx;
+			points[i].y = ry;
+			continue;
+		}
+
+		uint256 rise = subModP(points[i].y, q.y);
+		uint256 s = multiplyModP(rise, run[i]);
+		uint256 rx = subModP(subModP(multiplyModP(s, s), points[i].x), q.x);
+		uint256 ry = subModP(multiplyModP(s, subModP(points[i].x, rx)), points[i].y);
+		points[i].x = rx;
+		points[i].y = ry;
+	}
+}
+
 ecpoint secp256k1::multiplyPoint(const uint256 &k, const ecpoint &p)
 {
 	ecpoint sum = pointAtInfinity();
@@ -856,14 +922,9 @@ void secp256k1::generateKeyPairsBulk(const ecpoint &basePoint, std::vector<uint2
 					//rx = (s*s - px - qx) % _p;
 					uint256 rx = subModP(subModP(multiplyModP(s, s), pubKeysOut[j].x), table[i].x);
 
-					//ry = (s * (px - rx) - py) % _p;
 					uint256 ry = subModP(multiplyModP(s, subModP(pubKeysOut[j].x, rx)), pubKeysOut[j].y);
 
-					ecpoint r(rx, ry);
-					if(!pointExists(r)) {
-						throw std::string("Point does not exist");
-					}
-					pubKeysOut[j] = r;
+					pubKeysOut[j] = ecpoint(rx, ry);
 				}
 			}
 		}

@@ -28,6 +28,7 @@ private:
     std::mutex _resultsMutex;
 
     void processRange(uint64_t begin, uint64_t end);
+    void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t));
     bool checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5]);
 
 public:

@@ -175,6 +175,12 @@ Build CPU only (no GPU required):
 make BUILD_CPU=1
 ```
 
+On CPU, increase `-p` (keys per thread) to keep the batch large. Defaults are the host core count and `-p 2048`. Example:
+
+```
+./bin/cpuBitCrack -t 4 -p 4096 --keyspace START:END <address>
+```
+
 Build all backends:
 ```
 make BUILD_CUDA=1 BUILD_OPENCL=1 BUILD_CPU=1

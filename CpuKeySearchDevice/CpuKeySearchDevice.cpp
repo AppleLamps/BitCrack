@@ -56,15 +56,14 @@ void CpuKeySearchDevice::init(const secp256k1::uint256 &start, int compression, 
     Logger::log(LogLevel::Info, "Generating " + util::formatThousands(totalPoints) + " starting points on CPU");
 
     secp256k1::ecpoint g = secp256k1::G();
-    secp256k1::ecpoint stridePoint = secp256k1::multiplyPoint(_stride, g);
-    secp256k1::ecpoint base = secp256k1::multiplyPoint(_startExponent, g);
 
-    _points.resize((size_t)totalPoints);
-    _points[0] = base;
-
+    std::vector<secp256k1::uint256> exponents((size_t)totalPoints);
+    exponents[0] = _startExponent;
     for(uint64_t i = 1; i < totalPoints; i++) {
-        _points[(size_t)i] = secp256k1::addPoints(_points[(size_t)i - 1], stridePoint);
+        exponents[(size_t)i] = exponents[(size_t)i - 1].add(_stride);
     }
+
+    secp256k1::generateKeyPairsBulk(g, exponents, _points);
 
     _stepIncrement = secp256k1::multiplyPoint(secp256k1::uint256(totalPoints) * _stride, g);
 
@@ -120,7 +119,7 @@ void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
     }
 }
 
-void CpuKeySearchDevice::doStep()
+void CpuKeySearchDevice::runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t))
 {
     uint64_t totalPoints = keysPerStep();
     std::vector<std::thread> workers;
@@ -130,23 +129,33 @@ void CpuKeySearchDevice::doStep()
 
     workers.reserve((size_t)_threads);
 
-    for(int t = 0; t < _threads; t++) {
-        uint64_t count = chunk + (t < (int)remainder ? 1 : 0);
-        uint64_t begin = offset;
-        uint64_t end = offset + count;
-        offset = end;
+    try {
+        for(int t = 0; t < _threads; t++) {
+            uint64_t count = chunk + (t < (int)remainder ? 1 : 0);
+            uint64_t begin = offset;
+            uint64_t end = offset + count;
+            offset = end;
 
-        workers.push_back(std::thread(&CpuKeySearchDevice::processRange, this, begin, end));
+            workers.push_back(std::thread(fn, this, begin, end));
+        }
+    } catch(...) {
+        for(size_t i = 0; i < workers.size(); i++) {
+            if(workers[i].joinable()) {
+                workers[i].join();
+            }
+        }
+        throw;
     }
 
     for(size_t i = 0; i < workers.size(); i++) {
         workers[i].join();
     }
+}
 
-    for(uint64_t i = 0; i < totalPoints; i++) {
-        _points[(size_t)i] = secp256k1::addPoints(_points[(size_t)i], _stepIncrement);
-    }
-
+void CpuKeySearchDevice::doStep()
+{
+    runWorkers(&CpuKeySearchDevice::processRange);
+    secp256k1::addPointsBulk(_points, _stepIncrement);
     _iterations++;
 }
 

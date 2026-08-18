@@ -243,7 +243,7 @@ DeviceParameters getDefaultParameters(const DeviceManager::DeviceInfo &device)
             p.threads = 4;
         }
         p.blocks = 1;
-        p.pointsPerThread = 64;
+        p.pointsPerThread = 2048;
         return p;
     }
 #endif
