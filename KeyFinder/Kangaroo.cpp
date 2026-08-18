@@ -742,8 +742,10 @@ int runKangarooBench(const KangarooConfig &baseIn)
 	if(jps[1] > jps[0] * 1.05) {
 		combo |= KANGAROO_OPT_BATCH_ADD;
 	}
-	if(found26[2] > 0 && meanJumps26[2] > 0 && meanJumps26[2] < meanJumps26[0] * 0.95) {
-		combo |= KANGAROO_OPT_JUMPS;
+	if(found26[2] > 0) {
+		if(meanJumps26[2] > 0 && meanJumps26[2] < meanJumps26[0] * 0.95) {
+			combo |= KANGAROO_OPT_JUMPS;
+		}
 	} else if(foundN[2] > 0 && meanJumps[2] > 0 && meanJumps[2] < meanJumps[0] * 0.95) {
 		combo |= KANGAROO_OPT_JUMPS;
 	}

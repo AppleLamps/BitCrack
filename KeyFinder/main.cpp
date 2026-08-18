@@ -67,7 +67,7 @@ typedef struct {
     bool kangarooBench = false;
     std::string pubKey;
     int dpBits = 0;
-    int kangarooOpt = 0;
+    int kangarooOpt = KANGAROO_OPT_BATCH_ADD;
 }RunConfig;
 
 static RunConfig _config;
@@ -231,7 +231,7 @@ void usage()
     printf("--kangaroo              Pollard kangaroo ECDLP (needs a public key, not an address)\n");
     printf("--pubkey KEY            secp256k1 public key (02/03 compressed or 04 uncompressed hex)\n");
     printf("--dp BITS               Distinguished-point trailing zero bits (0 = auto)\n");
-    printf("--kangaroo-opt N        Kangaroo flags: 1=batch-add 2=jump-table 4=dp-policy (or-able)\n");
+    printf("--kangaroo-opt N        Kangaroo flags: 0=serial 1=batch-add (default) 2=jump-table 4=dp-policy (or-able)\n");
     printf("--kangaroo-bench        A/B test kangaroo variants against the baseline solver\n");
 }
 
