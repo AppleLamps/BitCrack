@@ -124,49 +124,74 @@ static FE_INLINE void fe_sub(fe &r, const fe &a, const fe &b)
 
 static FE_INLINE void fe_mul_wide(uint64_t z[8], const uint64_t a[4], const uint64_t b[4])
 {
-	unsigned __int128 carry;
-	uint64_t t[8];
+	const uint64_t a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+	const uint64_t b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+	unsigned __int128 m, c;
+	uint64_t t1, t2, t3, t4, t5, t6;
 
-	carry = 0;
-	for(int j = 0; j < 4; j++) {
-		unsigned __int128 m = (unsigned __int128)a[0] * b[j] + carry;
-		t[j] = (uint64_t)m;
-		carry = m >> 64;
-	}
-	t[4] = (uint64_t)carry;
+	m = (unsigned __int128)a0 * b0;
+	z[0] = (uint64_t)m;
+	c = m >> 64;
 
-	carry = 0;
-	for(int j = 0; j < 4; j++) {
-		unsigned __int128 m = (unsigned __int128)a[1] * b[j] + t[1 + j] + carry;
-		t[1 + j] = (uint64_t)m;
-		carry = m >> 64;
-	}
-	t[5] = (uint64_t)carry;
+	m = (unsigned __int128)a0 * b1 + c;
+	t1 = (uint64_t)m;
+	c = m >> 64;
 
-	carry = 0;
-	for(int j = 0; j < 4; j++) {
-		unsigned __int128 m = (unsigned __int128)a[2] * b[j] + t[2 + j] + carry;
-		t[2 + j] = (uint64_t)m;
-		carry = m >> 64;
-	}
-	t[6] = (uint64_t)carry;
+	m = (unsigned __int128)a0 * b2 + c;
+	t2 = (uint64_t)m;
+	c = m >> 64;
 
-	carry = 0;
-	for(int j = 0; j < 4; j++) {
-		unsigned __int128 m = (unsigned __int128)a[3] * b[j] + t[3 + j] + carry;
-		t[3 + j] = (uint64_t)m;
-		carry = m >> 64;
-	}
-	t[7] = (uint64_t)carry;
+	m = (unsigned __int128)a0 * b3 + c;
+	t3 = (uint64_t)m;
+	t4 = (uint64_t)(m >> 64);
 
-	z[0] = t[0];
-	z[1] = t[1];
-	z[2] = t[2];
-	z[3] = t[3];
-	z[4] = t[4];
-	z[5] = t[5];
-	z[6] = t[6];
-	z[7] = t[7];
+	m = (unsigned __int128)a1 * b0 + t1;
+	z[1] = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a1 * b1 + t2 + c;
+	t2 = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a1 * b2 + t3 + c;
+	t3 = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a1 * b3 + t4 + c;
+	t4 = (uint64_t)m;
+	t5 = (uint64_t)(m >> 64);
+
+	m = (unsigned __int128)a2 * b0 + t2;
+	z[2] = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a2 * b1 + t3 + c;
+	t3 = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a2 * b2 + t4 + c;
+	t4 = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a2 * b3 + t5 + c;
+	t5 = (uint64_t)m;
+	t6 = (uint64_t)(m >> 64);
+
+	m = (unsigned __int128)a3 * b0 + t3;
+	z[3] = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a3 * b1 + t4 + c;
+	z[4] = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a3 * b2 + t5 + c;
+	z[5] = (uint64_t)m;
+	c = m >> 64;
+
+	m = (unsigned __int128)a3 * b3 + t6 + c;
+	z[6] = (uint64_t)m;
+	z[7] = (uint64_t)(m >> 64);
 }
 
 static FE_INLINE void fe_reduce512(fe &r, const uint64_t p[8])
@@ -217,9 +242,71 @@ static FE_INLINE void fe_mul(fe &r, const fe &a, const fe &b)
 	fe_reduce512(r, p);
 }
 
+/* Add x*y (or 2*x*y) into a 192-bit accumulator (t: low 128, h: high 64). */
+static FE_INLINE void fe_acc_mul(unsigned __int128 &t, uint64_t &h, uint64_t x, uint64_t y)
+{
+	unsigned __int128 p = (unsigned __int128)x * y;
+	unsigned __int128 s = t + p;
+	h += (s < t);
+	t = s;
+}
+
+static FE_INLINE void fe_acc_mul2(unsigned __int128 &t, uint64_t &h, uint64_t x, uint64_t y)
+{
+	unsigned __int128 p = (unsigned __int128)x * y;
+	uint64_t e = (uint64_t)(p >> 127);
+	p <<= 1;
+	unsigned __int128 s = t + p;
+	h += e + (s < t);
+	t = s;
+}
+
+static FE_INLINE void fe_acc_extract(uint64_t &z, unsigned __int128 &t, uint64_t &h)
+{
+	z = (uint64_t)t;
+	t = (t >> 64) | ((unsigned __int128)h << 64);
+	h = 0;
+}
+
+/* Schoolbook square: diagonals + 2*cross. Loads limbs first so fe_sqr(r, r) is safe. */
+static FE_INLINE void fe_sqr_wide(uint64_t z[8], const uint64_t a[4])
+{
+	const uint64_t a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3];
+	unsigned __int128 t;
+	uint64_t h = 0;
+
+	t = (unsigned __int128)a0 * a0;
+	fe_acc_extract(z[0], t, h);
+
+	fe_acc_mul2(t, h, a0, a1);
+	fe_acc_extract(z[1], t, h);
+
+	fe_acc_mul2(t, h, a0, a2);
+	fe_acc_mul(t, h, a1, a1);
+	fe_acc_extract(z[2], t, h);
+
+	fe_acc_mul2(t, h, a0, a3);
+	fe_acc_mul2(t, h, a1, a2);
+	fe_acc_extract(z[3], t, h);
+
+	fe_acc_mul2(t, h, a1, a3);
+	fe_acc_mul(t, h, a2, a2);
+	fe_acc_extract(z[4], t, h);
+
+	fe_acc_mul2(t, h, a2, a3);
+	fe_acc_extract(z[5], t, h);
+
+	fe_acc_mul(t, h, a3, a3);
+	fe_acc_extract(z[6], t, h);
+
+	z[7] = (uint64_t)t;
+}
+
 static FE_INLINE void fe_sqr(fe &r, const fe &a)
 {
-	fe_mul(r, a, a);
+	uint64_t p[8];
+	fe_sqr_wide(p, a.n);
+	fe_reduce512(r, p);
 }
 
 /* Fermat inverse a^(P-2) via Peter Dettman's addition chain (libsecp256k1). */

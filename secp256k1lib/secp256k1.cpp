@@ -1036,6 +1036,201 @@ void secp256k1::addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, in
 #endif
 }
 
+void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64_t qx[4], const uint64_t qy[4], int threads)
+{
+	if(n == 0) {
+		return;
+	}
+
+	if(threads < 1) {
+		threads = 1;
+	}
+
+#if defined(__SIZEOF_INT128__)
+	fe *xs = reinterpret_cast<fe *>(x);
+	fe *ys = reinterpret_cast<fe *>(y);
+
+	fe qxf, qyf;
+	qxf.n[0] = qx[0];
+	qxf.n[1] = qx[1];
+	qxf.n[2] = qx[2];
+	qxf.n[3] = qx[3];
+	qyf.n[0] = qy[0];
+	qyf.n[1] = qy[1];
+	qyf.n[2] = qy[2];
+	qyf.n[3] = qy[3];
+
+	static std::vector<fe> run;
+	static std::vector<unsigned char> op;
+	run.resize(n);
+	op.resize(n);
+
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
+	for(size_t i = 0; i < n; i++) {
+#endif
+#if defined(__GNUC__)
+		if((size_t)i + 8 < n) {
+			__builtin_prefetch(&xs[i + 8], 0, 3);
+		}
+#endif
+		if(fe_eq(xs[i], qxf)) {
+			if(fe_eq(ys[i], qyf)) {
+				op[i] = 2;
+				fe_add(run[i], ys[i], ys[i]);
+			} else {
+				op[i] = 3;
+				fe_set1(run[i]);
+			}
+		} else {
+			op[i] = 0;
+			fe_sub(run[i], xs[i], qxf);
+		}
+	}
+
+#ifdef _OPENMP
+	if(threads > 1 && n > 1) {
+		#pragma omp parallel num_threads(threads)
+		{
+			int tid = omp_get_thread_num();
+			int nt = omp_get_num_threads();
+			size_t chunk = (n + (size_t)nt - 1) / (size_t)nt;
+			size_t begin = (size_t)tid * chunk;
+			size_t end = begin + chunk;
+			if(begin > n) {
+				begin = n;
+			}
+			if(end > n) {
+				end = n;
+			}
+			bulkInversionFeRange(run, begin, end);
+		}
+	} else {
+		bulkInversionFeRange(run, 0, n);
+	}
+#else
+	bulkInversionFeRange(run, 0, n);
+	(void)threads;
+#endif
+
+#ifdef _OPENMP
+	#pragma omp parallel for schedule(static) num_threads(threads)
+	for(long long i = 0; i < (long long)n; i++) {
+#else
+	for(size_t i = 0; i < n; i++) {
+#endif
+#if defined(__GNUC__)
+		if((size_t)i + 8 < n) {
+			__builtin_prefetch(&xs[i + 8], 0, 3);
+			__builtin_prefetch(&ys[i + 8], 0, 3);
+		}
+#endif
+		if(op[i] == 3) {
+			xs[i].n[0] = xs[i].n[1] = xs[i].n[2] = xs[i].n[3] = ~0ULL;
+			ys[i].n[0] = ys[i].n[1] = ys[i].n[2] = ys[i].n[3] = ~0ULL;
+			continue;
+		}
+
+		fe px = xs[i];
+		fe py = ys[i];
+		fe s, rx, ry, tmp;
+
+		if(op[i] == 2) {
+			fe_sqr(tmp, px);
+			fe_add(s, tmp, tmp);
+			fe_add(s, s, tmp);
+			fe_mul(s, s, run[i]);
+			fe_sqr(tmp, s);
+			fe_sub(rx, tmp, px);
+			fe_sub(rx, rx, px);
+			fe_sub(tmp, px, rx);
+			fe_mul(ry, s, tmp);
+			fe_sub(ry, ry, py);
+			xs[i] = rx;
+			ys[i] = ry;
+			continue;
+		}
+
+		fe_sub(tmp, py, qyf);
+		fe_mul(s, tmp, run[i]);
+		fe_sqr(tmp, s);
+		fe_sub(rx, tmp, px);
+		fe_sub(rx, rx, qxf);
+		fe_sub(tmp, px, rx);
+		fe_mul(ry, s, tmp);
+		fe_sub(ry, ry, py);
+		xs[i] = rx;
+		ys[i] = ry;
+	}
+#else
+	std::vector<ecpoint> points(n);
+	uint256 qx256, qy256;
+
+	qx256.v[0] = (unsigned int)qx[0];
+	qx256.v[1] = (unsigned int)(qx[0] >> 32);
+	qx256.v[2] = (unsigned int)qx[1];
+	qx256.v[3] = (unsigned int)(qx[1] >> 32);
+	qx256.v[4] = (unsigned int)qx[2];
+	qx256.v[5] = (unsigned int)(qx[2] >> 32);
+	qx256.v[6] = (unsigned int)qx[3];
+	qx256.v[7] = (unsigned int)(qx[3] >> 32);
+
+	qy256.v[0] = (unsigned int)qy[0];
+	qy256.v[1] = (unsigned int)(qy[0] >> 32);
+	qy256.v[2] = (unsigned int)qy[1];
+	qy256.v[3] = (unsigned int)(qy[1] >> 32);
+	qy256.v[4] = (unsigned int)qy[2];
+	qy256.v[5] = (unsigned int)(qy[2] >> 32);
+	qy256.v[6] = (unsigned int)qy[3];
+	qy256.v[7] = (unsigned int)(qy[3] >> 32);
+
+	ecpoint q(qx256, qy256);
+
+	for(size_t i = 0; i < n; i++) {
+		uint256 px, py;
+		const uint64_t *xl = x + i * 4;
+		const uint64_t *yl = y + i * 4;
+
+		px.v[0] = (unsigned int)xl[0];
+		px.v[1] = (unsigned int)(xl[0] >> 32);
+		px.v[2] = (unsigned int)xl[1];
+		px.v[3] = (unsigned int)(xl[1] >> 32);
+		px.v[4] = (unsigned int)xl[2];
+		px.v[5] = (unsigned int)(xl[2] >> 32);
+		px.v[6] = (unsigned int)xl[3];
+		px.v[7] = (unsigned int)(xl[3] >> 32);
+
+		py.v[0] = (unsigned int)yl[0];
+		py.v[1] = (unsigned int)(yl[0] >> 32);
+		py.v[2] = (unsigned int)yl[1];
+		py.v[3] = (unsigned int)(yl[1] >> 32);
+		py.v[4] = (unsigned int)yl[2];
+		py.v[5] = (unsigned int)(yl[2] >> 32);
+		py.v[6] = (unsigned int)yl[3];
+		py.v[7] = (unsigned int)(yl[3] >> 32);
+
+		points[i] = ecpoint(px, py);
+	}
+
+	addPointsBulk(points, q, threads);
+
+	for(size_t i = 0; i < n; i++) {
+		uint64_t *xl = x + i * 4;
+		uint64_t *yl = y + i * 4;
+		xl[0] = (uint64_t)points[i].x.v[0] | ((uint64_t)points[i].x.v[1] << 32);
+		xl[1] = (uint64_t)points[i].x.v[2] | ((uint64_t)points[i].x.v[3] << 32);
+		xl[2] = (uint64_t)points[i].x.v[4] | ((uint64_t)points[i].x.v[5] << 32);
+		xl[3] = (uint64_t)points[i].x.v[6] | ((uint64_t)points[i].x.v[7] << 32);
+		yl[0] = (uint64_t)points[i].y.v[0] | ((uint64_t)points[i].y.v[1] << 32);
+		yl[1] = (uint64_t)points[i].y.v[2] | ((uint64_t)points[i].y.v[3] << 32);
+		yl[2] = (uint64_t)points[i].y.v[4] | ((uint64_t)points[i].y.v[5] << 32);
+		yl[3] = (uint64_t)points[i].y.v[6] | ((uint64_t)points[i].y.v[7] << 32);
+	}
+#endif
+}
+
 ecpoint secp256k1::multiplyPoint(const uint256 &k, const ecpoint &p)
 {
 	ecpoint sum = pointAtInfinity();

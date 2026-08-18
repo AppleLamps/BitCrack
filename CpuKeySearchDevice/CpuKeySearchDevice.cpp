@@ -10,6 +10,116 @@
 #include <fstream>
 #include <thread>
 
+static inline void uint256ToLimbs(const secp256k1::uint256 &a, uint64_t out[4])
+{
+    out[0] = (uint64_t)a.v[0] | ((uint64_t)a.v[1] << 32);
+    out[1] = (uint64_t)a.v[2] | ((uint64_t)a.v[3] << 32);
+    out[2] = (uint64_t)a.v[4] | ((uint64_t)a.v[5] << 32);
+    out[3] = (uint64_t)a.v[6] | ((uint64_t)a.v[7] << 32);
+}
+
+static inline void limbsToUint256(const uint64_t in[4], secp256k1::uint256 &a)
+{
+    a.v[0] = (unsigned int)in[0];
+    a.v[1] = (unsigned int)(in[0] >> 32);
+    a.v[2] = (unsigned int)in[1];
+    a.v[3] = (unsigned int)(in[1] >> 32);
+    a.v[4] = (unsigned int)in[2];
+    a.v[5] = (unsigned int)(in[2] >> 32);
+    a.v[6] = (unsigned int)in[3];
+    a.v[7] = (unsigned int)(in[3] >> 32);
+}
+
+static inline secp256k1::ecpoint limbsToPoint(const uint64_t x[4], const uint64_t y[4])
+{
+    secp256k1::uint256 ux, uy;
+    limbsToUint256(x, ux);
+    limbsToUint256(y, uy);
+    return secp256k1::ecpoint(ux, uy);
+}
+
+static inline void limbsToBeWords(const uint64_t n[4], unsigned int words[8])
+{
+    words[0] = (unsigned int)(n[3] >> 32);
+    words[1] = (unsigned int)n[3];
+    words[2] = (unsigned int)(n[2] >> 32);
+    words[3] = (unsigned int)n[2];
+    words[4] = (unsigned int)(n[1] >> 32);
+    words[5] = (unsigned int)n[1];
+    words[6] = (unsigned int)(n[0] >> 32);
+    words[7] = (unsigned int)n[0];
+}
+
+static inline unsigned int endian32(unsigned int x)
+{
+#if defined(__GNUC__)
+    return __builtin_bswap32(x);
+#else
+    return (x << 24) | ((x << 8) & 0x00ff0000) | ((x >> 8) & 0x0000ff00) | (x >> 24);
+#endif
+}
+
+static void fillCompressedShaMsg(const uint64_t x[4], uint64_t yOdd, unsigned int msg[16])
+{
+    const unsigned int x0 = (unsigned int)x[0];
+    const unsigned int x1 = (unsigned int)(x[0] >> 32);
+    const unsigned int x2 = (unsigned int)x[1];
+    const unsigned int x3 = (unsigned int)(x[1] >> 32);
+    const unsigned int x4 = (unsigned int)x[2];
+    const unsigned int x5 = (unsigned int)(x[2] >> 32);
+    const unsigned int x6 = (unsigned int)x[3];
+    const unsigned int x7 = (unsigned int)(x[3] >> 32);
+
+    msg[15] = 33 * 8;
+    msg[8] = (x0 << 24) | 0x00800000;
+    msg[7] = (x0 >> 8) | (x1 << 24);
+    msg[6] = (x1 >> 8) | (x2 << 24);
+    msg[5] = (x2 >> 8) | (x3 << 24);
+    msg[4] = (x3 >> 8) | (x4 << 24);
+    msg[3] = (x4 >> 8) | (x5 << 24);
+    msg[2] = (x5 >> 8) | (x6 << 24);
+    msg[1] = (x6 >> 8) | (x7 << 24);
+    msg[0] = (x7 >> 8) | (yOdd ? 0x03000000u : 0x02000000u);
+    msg[9] = 0;
+    msg[10] = 0;
+    msg[11] = 0;
+    msg[12] = 0;
+    msg[13] = 0;
+    msg[14] = 0;
+}
+
+static void shaDigestToRipemdMsg(const unsigned int sha256Digest[8], unsigned int msg[16])
+{
+    msg[0] = endian32(sha256Digest[0]);
+    msg[1] = endian32(sha256Digest[1]);
+    msg[2] = endian32(sha256Digest[2]);
+    msg[3] = endian32(sha256Digest[3]);
+    msg[4] = endian32(sha256Digest[4]);
+    msg[5] = endian32(sha256Digest[5]);
+    msg[6] = endian32(sha256Digest[6]);
+    msg[7] = endian32(sha256Digest[7]);
+    msg[8] = 0x00000080;
+    msg[9] = 0;
+    msg[10] = 0;
+    msg[11] = 0;
+    msg[12] = 0;
+    msg[13] = 0;
+    msg[14] = 256;
+    msg[15] = 0;
+}
+
+static void hashPublicKeyCompressedLimbs(const uint64_t x[4], uint64_t yOdd, unsigned int digest[5])
+{
+    unsigned int msg[16];
+    unsigned int sha256Digest[8];
+
+    fillCompressedShaMsg(x, yOdd, msg);
+    crypto::sha256Init(sha256Digest);
+    crypto::sha256(msg, sha256Digest);
+    shaDigestToRipemdMsg(sha256Digest, msg);
+    crypto::ripemd160(msg, digest);
+}
+
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -71,14 +181,31 @@ void CpuKeySearchDevice::init(const secp256k1::uint256 &start, int compression, 
         exponents[(size_t)i] = exponents[(size_t)i - 1].add(_stride);
     }
 
-    secp256k1::generateKeyPairsBulk(g, exponents, _points);
+    std::vector<secp256k1::ecpoint> points;
+    secp256k1::generateKeyPairsBulk(g, exponents, points);
 
-    _stepIncrement = secp256k1::multiplyPoint(secp256k1::uint256(totalPoints) * _stride, g);
+    const size_t n = points.size();
+    _fx.resize(n * 4);
+    _fy.resize(n * 4);
+    for(size_t i = 0; i < n; i++) {
+        uint256ToLimbs(points[i].x, &_fx[i * 4]);
+        uint256ToLimbs(points[i].y, &_fy[i * 4]);
+    }
+
+    secp256k1::ecpoint step = secp256k1::multiplyPoint(secp256k1::uint256(totalPoints) * _stride, g);
+    uint256ToLimbs(step.x, _stepQx);
+    uint256ToLimbs(step.y, _stepQy);
 
     if(crypto::sha256UsesHardware()) {
         Logger::log(LogLevel::Info, "SHA-256: hardware SHA-NI");
     } else {
         Logger::log(LogLevel::Info, "SHA-256: software");
+    }
+
+    if(crypto::ripemd160UsesAvx2()) {
+        Logger::log(LogLevel::Info, "RIPEMD-160: AVX2 4-way");
+    } else {
+        Logger::log(LogLevel::Info, "RIPEMD-160: software");
     }
 
     Logger::log(LogLevel::Info, "Done");
@@ -134,7 +261,7 @@ uint64_t CpuKeySearchDevice::keysToHashThisStep()
     return lo;
 }
 
-bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5])
+bool CpuKeySearchDevice::checkAndRecord(uint64_t index, bool compressed, const unsigned int digest[5])
 {
     if(_singleTarget) {
         if(digest[0] != _singleTargetHash[0] || digest[1] != _singleTargetHash[1] ||
@@ -154,7 +281,7 @@ bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint
     if(_clipToEnd && result.privateKey.cmp(_endKey) > 0) {
         return false;
     }
-    result.publicKey = point;
+    result.publicKey = limbsToPoint(&_fx[(size_t)index * 4], &_fy[(size_t)index * 4]);
     result.compressed = compressed;
     memcpy(result.hash, digest, sizeof(unsigned int) * 5);
 
@@ -166,37 +293,80 @@ bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint
 
 void CpuKeySearchDevice::processOne(uint64_t index)
 {
-    const secp256k1::ecpoint &point = _points[(size_t)index];
+    const uint64_t *x = &_fx[(size_t)index * 4];
+    const uint64_t *y = &_fy[(size_t)index * 4];
     unsigned int digest[5];
 
     if(_compression == PointCompressionType::COMPRESSED) {
-        Hash::hashPublicKeyCompressed(point, digest);
-        checkAndRecord(index, point, true, digest);
+        hashPublicKeyCompressedLimbs(x, y[0] & 1, digest);
+        checkAndRecord(index, true, digest);
         return;
     }
 
     unsigned int xWords[8];
     unsigned int yWords[8];
-    point.x.exportWords(xWords, 8, secp256k1::uint256::BigEndian);
-    point.y.exportWords(yWords, 8, secp256k1::uint256::BigEndian);
+    limbsToBeWords(x, xWords);
+    limbsToBeWords(y, yWords);
 
     if(_compression == PointCompressionType::UNCOMPRESSED || _compression == PointCompressionType::BOTH) {
         Hash::hashPublicKey(xWords, yWords, digest);
-        checkAndRecord(index, point, false, digest);
+        checkAndRecord(index, false, digest);
     }
 
     if(_compression == PointCompressionType::COMPRESSED || _compression == PointCompressionType::BOTH) {
         Hash::hashPublicKeyCompressed(xWords, yWords, digest);
-        checkAndRecord(index, point, true, digest);
+        checkAndRecord(index, true, digest);
+    }
+}
+
+void CpuKeySearchDevice::processFour(uint64_t index)
+{
+    unsigned int shaMsg[4][16];
+    unsigned int shaDigest[4][8];
+    unsigned int ripeMsg[4][16];
+    unsigned int digest[4][5];
+
+    for(int lane = 0; lane < 4; lane++) {
+        const size_t i = (size_t)index + (size_t)lane;
+        fillCompressedShaMsg(&_fx[i * 4], _fy[i * 4] & 1, shaMsg[lane]);
+        crypto::sha256Init(shaDigest[lane]);
+    }
+
+    crypto::sha2562(shaMsg[0], shaDigest[0], shaMsg[1], shaDigest[1]);
+    crypto::sha2562(shaMsg[2], shaDigest[2], shaMsg[3], shaDigest[3]);
+
+    for(int lane = 0; lane < 4; lane++) {
+        shaDigestToRipemdMsg(shaDigest[lane], ripeMsg[lane]);
+    }
+
+    crypto::ripemd160x4(ripeMsg, digest);
+
+    for(int lane = 0; lane < 4; lane++) {
+        checkAndRecord(index + (uint64_t)lane, true, digest[lane]);
     }
 }
 
 void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
 {
-    for(uint64_t i = begin; i < end; i++) {
+    uint64_t i = begin;
+    if(_compression == PointCompressionType::COMPRESSED) {
+        while(i + 4 <= end) {
+#if defined(__GNUC__)
+            if(i + 12 < end) {
+                __builtin_prefetch(&_fx[((size_t)i + 12) * 4], 0, 3);
+                __builtin_prefetch(&_fy[((size_t)i + 12) * 4], 0, 3);
+            }
+#endif
+            processFour(i);
+            i += 4;
+        }
+    }
+
+    for(; i < end; i++) {
 #if defined(__GNUC__)
         if(i + 8 < end) {
-            __builtin_prefetch(&_points[(size_t)i + 8], 0, 3);
+            __builtin_prefetch(&_fx[((size_t)i + 8) * 4], 0, 3);
+            __builtin_prefetch(&_fy[((size_t)i + 8) * 4], 0, 3);
         }
 #endif
         processOne(i);
@@ -243,19 +413,31 @@ void CpuKeySearchDevice::doStep()
 {
     const uint64_t hashCount = keysToHashThisStep();
 #ifdef _OPENMP
-    #pragma omp parallel for schedule(static) num_threads(_threads)
-    for(int64_t i = 0; i < (int64_t)hashCount; i++) {
+    if(_compression == PointCompressionType::COMPRESSED) {
+        const int64_t n4 = (int64_t)(hashCount & ~(uint64_t)3);
+        #pragma omp parallel for schedule(static) num_threads(_threads)
+        for(int64_t i = 0; i < n4; i += 4) {
 #if defined(__GNUC__)
-        if(i + 8 < (int64_t)hashCount) {
-            __builtin_prefetch(&_points[(size_t)i + 8], 0, 3);
-        }
+            if(i + 12 < (int64_t)hashCount) {
+                __builtin_prefetch(&_fx[((size_t)i + 12) * 4], 0, 3);
+                __builtin_prefetch(&_fy[((size_t)i + 12) * 4], 0, 3);
+            }
 #endif
-        processOne((uint64_t)i);
+            processFour((uint64_t)i);
+        }
+        for(uint64_t i = (uint64_t)n4; i < hashCount; i++) {
+            processOne(i);
+        }
+    } else {
+        #pragma omp parallel for schedule(static) num_threads(_threads)
+        for(int64_t i = 0; i < (int64_t)hashCount; i++) {
+            processOne((uint64_t)i);
+        }
     }
 #else
     runWorkers(&CpuKeySearchDevice::processRange, hashCount);
 #endif
-    secp256k1::addPointsBulk(_points, _stepIncrement, _threads);
+    secp256k1::addPointsBulkXY(_fx.data(), _fy.data(), _fx.size() / 4, _stepQx, _stepQy, _threads);
     _iterations++;
 }
 
