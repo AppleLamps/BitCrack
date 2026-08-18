@@ -137,6 +137,7 @@ void KeyFinder::init()
 	Logger::log(LogLevel::Info, "Initializing " + _device->getDeviceName());
 
     _device->init(_startKey, _compression, _stride);
+    _device->setEndKey(_endKey);
 }
 
 
@@ -222,6 +223,10 @@ void KeyFinder::run()
 
 			for(unsigned int i = 0; i < results.size(); i++) {
 
+				if(results[i].privateKey.cmp(_endKey) > 0) {
+					continue;
+				}
+
 				KeySearchResult info;
                 info.privateKey = results[i].privateKey;
                 info.publicKey = results[i].publicKey;
@@ -233,6 +238,9 @@ void KeyFinder::run()
 
 			// Remove the hashes that were found
 			for(unsigned int i = 0; i < results.size(); i++) {
+				if(results[i].privateKey.cmp(_endKey) > 0) {
+					continue;
+				}
 				removeTargetFromList(results[i].hash);
 			}
 		}

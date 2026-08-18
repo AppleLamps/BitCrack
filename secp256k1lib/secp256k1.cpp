@@ -904,7 +904,7 @@ static void bulkInversionModPRange(std::vector<uint256> &in, size_t begin, size_
 
 	uint256 inverse = secp256k1::invModP(total);
 
-	for(int i = (int)count - 1; i >= 0; i--) {
+	for(size_t i = count; i-- > 0; ) {
 		if(i > 0) {
 			uint256 newValue = secp256k1::multiplyModP(products[i - 1], inverse);
 			inverse = multiplyModP(inverse, in[begin + i]);

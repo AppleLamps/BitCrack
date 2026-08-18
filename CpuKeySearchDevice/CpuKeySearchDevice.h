@@ -18,7 +18,9 @@ private:
 
     secp256k1::uint256 _startExponent;
     secp256k1::uint256 _stride;
+    secp256k1::uint256 _endKey;
     secp256k1::ecpoint _stepIncrement;
+    bool _clipToEnd;
 
     uint64_t _iterations;
 
@@ -32,8 +34,10 @@ private:
 
     void processOne(uint64_t index);
     void processRange(uint64_t begin, uint64_t end);
-    void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t));
+    void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t), uint64_t totalPoints);
     bool checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5]);
+    uint64_t keysToHashThisStep();
+    secp256k1::uint256 privateKeyAtIndex(uint64_t index);
 
 public:
     CpuKeySearchDevice(int threads, int pointsPerThread, int blocks = 1);
@@ -41,6 +45,7 @@ public:
     virtual void init(const secp256k1::uint256 &start, int compression, const secp256k1::uint256 &stride);
     virtual void doStep();
     virtual void setTargets(const std::set<KeySearchTarget> &targets);
+    virtual void setEndKey(const secp256k1::uint256 &endKey);
     virtual size_t getResults(std::vector<KeySearchResult> &results);
     virtual uint64_t keysPerStep();
     virtual std::string getDeviceName();

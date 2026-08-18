@@ -20,12 +20,6 @@
 #include <unistd.h>
 #endif
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 CpuKeySearchDevice::CpuKeySearchDevice(int threads, int pointsPerThread, int blocks)
 {
     if(threads <= 0) {
@@ -45,6 +39,7 @@ CpuKeySearchDevice::CpuKeySearchDevice(int threads, int pointsPerThread, int blo
     _pointsPerThread = pointsPerThread;
     _iterations = 0;
     _singleTarget = false;
+    _clipToEnd = false;
 
     unsigned int hw = std::thread::hardware_concurrency();
     _deviceName = "CPU";
@@ -100,6 +95,45 @@ void CpuKeySearchDevice::setTargets(const std::set<KeySearchTarget> &targets)
     }
 }
 
+void CpuKeySearchDevice::setEndKey(const secp256k1::uint256 &endKey)
+{
+    _endKey = endKey;
+    _clipToEnd = true;
+}
+
+secp256k1::uint256 CpuKeySearchDevice::privateKeyAtIndex(uint64_t index)
+{
+    secp256k1::uint256 offset = (secp256k1::uint256(keysPerStep()) * _iterations + secp256k1::uint256(index)) * _stride;
+    return secp256k1::addModN(_startExponent, offset);
+}
+
+uint64_t CpuKeySearchDevice::keysToHashThisStep()
+{
+    uint64_t n = keysPerStep();
+    if(!_clipToEnd) {
+        return n;
+    }
+
+    secp256k1::uint256 next = getNextKey();
+    if(next.cmp(_endKey) > 0) {
+        return 0;
+    }
+
+    uint64_t lo = 0;
+    uint64_t hi = n;
+    while(lo < hi) {
+        uint64_t mid = lo + (hi - lo) / 2;
+        secp256k1::uint256 key = next + secp256k1::uint256(mid) * _stride;
+        if(key.cmp(_endKey) > 0) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+
+    return lo;
+}
+
 bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5])
 {
     if(_singleTarget) {
@@ -116,8 +150,10 @@ bool CpuKeySearchDevice::checkAndRecord(uint64_t index, const secp256k1::ecpoint
     }
 
     KeySearchResult result;
-    secp256k1::uint256 offset = (secp256k1::uint256(_iterations * keysPerStep() + index) * _stride);
-    result.privateKey = secp256k1::addModN(_startExponent, offset);
+    result.privateKey = privateKeyAtIndex(index);
+    if(_clipToEnd && result.privateKey.cmp(_endKey) > 0) {
+        return false;
+    }
     result.publicKey = point;
     result.compressed = compressed;
     memcpy(result.hash, digest, sizeof(unsigned int) * 5);
@@ -162,9 +198,12 @@ void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
     }
 }
 
-void CpuKeySearchDevice::runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t))
+void CpuKeySearchDevice::runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t), uint64_t totalPoints)
 {
-    uint64_t totalPoints = keysPerStep();
+    if(totalPoints == 0) {
+        return;
+    }
+
     std::vector<std::thread> workers;
     uint64_t chunk = totalPoints / (uint64_t)_threads;
     uint64_t remainder = totalPoints % (uint64_t)_threads;
@@ -197,14 +236,14 @@ void CpuKeySearchDevice::runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uin
 
 void CpuKeySearchDevice::doStep()
 {
+    const uint64_t hashCount = keysToHashThisStep();
 #ifdef _OPENMP
-    const int64_t n = (int64_t)keysPerStep();
     #pragma omp parallel for schedule(static) num_threads(_threads)
-    for(int64_t i = 0; i < n; i++) {
+    for(int64_t i = 0; i < (int64_t)hashCount; i++) {
         processOne((uint64_t)i);
     }
 #else
-    runWorkers(&CpuKeySearchDevice::processRange);
+    runWorkers(&CpuKeySearchDevice::processRange, hashCount);
 #endif
     secp256k1::addPointsBulk(_points, _stepIncrement, _threads);
     _iterations++;
@@ -270,5 +309,5 @@ void CpuKeySearchDevice::getMemoryInfo(uint64_t &freeMem, uint64_t &totalMem)
 
 secp256k1::uint256 CpuKeySearchDevice::getNextKey()
 {
-    return _startExponent + secp256k1::uint256(keysPerStep() * _iterations) * _stride;
+    return _startExponent + secp256k1::uint256(keysPerStep()) * _iterations * _stride;
 }

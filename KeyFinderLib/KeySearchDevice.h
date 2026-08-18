@@ -59,6 +59,12 @@ public:
     // Memory information for this device
     virtual void getMemoryInfo(uint64_t &freeMem, uint64_t &totalMem) = 0;
 
+    // Optional inclusive upper bound. Default no-op for GPU backends.
+    virtual void setEndKey(const secp256k1::uint256 &endKey)
+    {
+        (void)endKey;
+    }
+
     virtual secp256k1::uint256 getNextKey() = 0;
 };
 
