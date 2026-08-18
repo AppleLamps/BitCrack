@@ -1,5 +1,7 @@
 #include "DeviceManager.h"
 
+#include <thread>
+
 #ifdef BUILD_CUDA
 #include "cudaUtil.h"
 #endif
@@ -13,6 +15,23 @@ std::vector<DeviceManager::DeviceInfo> DeviceManager::getDevices()
     int deviceId = 0;
 
     std::vector<DeviceManager::DeviceInfo> devices;
+
+#ifdef BUILD_CPU
+    {
+        DeviceManager::DeviceInfo device;
+        device.name = "CPU";
+        device.type = DeviceType::CPU;
+        device.id = deviceId;
+        device.physicalId = 0;
+        device.computeUnits = (int)std::thread::hardware_concurrency();
+        if(device.computeUnits <= 0) {
+            device.computeUnits = 1;
+        }
+        device.memory = 0;
+        devices.push_back(device);
+        deviceId++;
+    }
+#endif
 
 #ifdef BUILD_CUDA
     // Get CUDA devices

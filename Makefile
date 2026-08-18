@@ -1,6 +1,6 @@
 
 CUR_DIR=$(shell pwd)
-DIRS=util AddressUtil CmdParse CryptoUtil KeyFinderLib CLKeySearchDevice CudaKeySearchDevice cudaMath clUtil cudaUtil secp256k1lib Logger embedcl
+DIRS=util AddressUtil CmdParse CryptoUtil KeyFinderLib CLKeySearchDevice CudaKeySearchDevice CpuKeySearchDevice cudaMath clUtil cudaUtil secp256k1lib Logger embedcl
 
 INCLUDE = $(foreach d, $(DIRS), -I$(CUR_DIR)/$d)
 
@@ -53,6 +53,11 @@ ifeq ($(BUILD_OPENCL),1)
 	CXXFLAGS:=${CXXFLAGS} -DCL_TARGET_OPENCL_VERSION=${OPENCL_VERSION}
 endif
 
+ifeq ($(BUILD_CPU),1)
+	TARGETS:=${TARGETS} dir_cpuKeySearchDevice
+	CXXFLAGS:=${CXXFLAGS} -pthread
+endif
+
 all:	${TARGETS}
 
 dir_cudaKeySearchDevice: dir_keyfinderlib dir_cudautil dir_logger
@@ -60,6 +65,9 @@ dir_cudaKeySearchDevice: dir_keyfinderlib dir_cudautil dir_logger
 
 dir_clKeySearchDevice: dir_embedcl dir_keyfinderlib dir_clutil dir_logger
 	make --directory CLKeySearchDevice
+
+dir_cpuKeySearchDevice: dir_keyfinderlib
+	make --directory CpuKeySearchDevice
 
 dir_embedcl:
 	make --directory embedcl
@@ -84,6 +92,10 @@ endif
 
 ifeq ($(BUILD_OPENCL),1)
 	KEYFINDER_DEPS:=$(KEYFINDER_DEPS) dir_clKeySearchDevice
+endif
+
+ifeq ($(BUILD_CPU),1)
+	KEYFINDER_DEPS:=$(KEYFINDER_DEPS) dir_cpuKeySearchDevice
 endif
 
 dir_keyfinder:	$(KEYFINDER_DEPS)
@@ -128,5 +140,6 @@ clean:
 	make --directory CudaKeySearchDevice clean
 	make --directory embedcl clean
 	make --directory CLUnitTests clean
+	make --directory CpuKeySearchDevice clean
 	rm -rf ${LIBDIR}
 	rm -rf ${BINDIR}

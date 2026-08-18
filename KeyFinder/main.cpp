@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 #include "KeyFinder.h"
 #include "AddressUtil.h"
@@ -18,6 +19,10 @@
 
 #ifdef BUILD_OPENCL
 #include "CLKeySearchDevice.h"
+#endif
+
+#ifdef BUILD_CPU
+#include "CpuKeySearchDevice.h"
 #endif
 
 typedef struct {
@@ -230,6 +235,19 @@ typedef struct {
 DeviceParameters getDefaultParameters(const DeviceManager::DeviceInfo &device)
 {
 	DeviceParameters p;
+
+#ifdef BUILD_CPU
+    if(device.type == DeviceManager::DeviceType::CPU) {
+        p.threads = (unsigned int)std::thread::hardware_concurrency();
+        if(p.threads == 0) {
+            p.threads = 4;
+        }
+        p.blocks = 1;
+        p.pointsPerThread = 64;
+        return p;
+    }
+#endif
+
 	p.threads = 256;
     p.blocks = 32;
 	p.pointsPerThread = 32;
@@ -251,6 +269,15 @@ static KeySearchDevice *getDeviceContext(DeviceManager::DeviceInfo &device, int 
     }
 #endif
 
+#ifdef BUILD_CPU
+    if(device.type == DeviceManager::DeviceType::CPU) {
+        if(blocks == 0) {
+            blocks = 1;
+        }
+        return new CpuKeySearchDevice(threads, pointsPerThread, blocks);
+    }
+#endif
+
     return NULL;
 }
 
@@ -258,6 +285,13 @@ static void printDeviceList(const std::vector<DeviceManager::DeviceInfo> &device
 {
     for(int i = 0; i < devices.size(); i++) {
         printf("ID:     %d\n", devices[i].id);
+        if(devices[i].type == DeviceManager::DeviceType::CPU) {
+            printf("Type:   CPU\n");
+        } else if(devices[i].type == DeviceManager::DeviceType::CUDA) {
+            printf("Type:   CUDA\n");
+        } else if(devices[i].type == DeviceManager::DeviceType::OpenCL) {
+            printf("Type:   OpenCL\n");
+        }
         printf("Name:   %s\n", devices[i].name.c_str());
         printf("Memory: %lldMB\n", devices[i].memory / ((uint64_t)1024 * 1024));
         printf("Compute units: %d\n", devices[i].computeUnits);

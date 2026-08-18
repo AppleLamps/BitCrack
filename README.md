@@ -8,7 +8,7 @@ A tool for brute-forcing Bitcoin private keys. The main purpose of this project 
 #### Usage
 
 
-Use `cuBitCrack.exe` for CUDA devices and `clBitCrack.exe` for OpenCL devices.
+Use `cuBitCrack.exe` for CUDA devices, `clBitCrack.exe` for OpenCL devices, and `cpuBitCrack` for CPU-only search (no GPU required).
 
 ### Note: **clBitCrack.exe is still EXPERIMENTAL**, as users have reported critial bugs when running on some AMD and Intel devices.
 
@@ -168,6 +168,16 @@ make BUILD_OPENCL=1
 Or build both:
 ```
 make BUILD_CUDA=1 BUILD_OPENCL=1
+```
+
+Build CPU only (no GPU required):
+```
+make BUILD_CPU=1
+```
+
+Build all backends:
+```
+make BUILD_CUDA=1 BUILD_OPENCL=1 BUILD_CPU=1
 ```
 
 ### Supporting this project
