@@ -1,5 +1,27 @@
-#include"CryptoUtil.h"
-#include<stdio.h>
+/* AVX2 4-way RIPEMD-160. Hashes 4 independent 64-byte (16 LE uint32)
+ * messages. Output is 5 BE uint32 words per lane, matching crypto::ripemd160.
+ * Compiled with -mavx2 -mno-avx512f; runtime CPUID in ripemd160.cpp decides
+ * whether to call this. */
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+#include <stdint.h>
+
+#if defined(__GNUC__)
+#include <x86intrin.h>
+#endif
+
+#if defined(_MSC_VER)
+#include <immintrin.h>
+#endif
+
+#if defined(__GNUC__)
+#define RIPEMD_INLINE inline __attribute__((always_inline))
+#else
+#define RIPEMD_INLINE inline
+#endif
+
+typedef __m128i v4;
 
 static const unsigned int _IV[5] = {
 	0x67452301,
@@ -19,144 +41,146 @@ static const unsigned int _K5 = 0x6d703ef3;
 static const unsigned int _K6 = 0x5c4dd124;
 static const unsigned int _K7 = 0x50a28be6;
 
+static RIPEMD_INLINE v4 vrotl(v4 x, int n)
+{
+	return _mm_or_si128(_mm_slli_epi32(x, n), _mm_srli_epi32(x, 32 - n));
+}
+
+static RIPEMD_INLINE v4 F(v4 x, v4 y, v4 z)
+{
+	return _mm_xor_si128(_mm_xor_si128(x, y), z);
+}
+
+static RIPEMD_INLINE v4 G(v4 x, v4 y, v4 z)
+{
+	return _mm_or_si128(_mm_and_si128(x, y), _mm_andnot_si128(x, z));
+}
+
+static RIPEMD_INLINE v4 H(v4 x, v4 y, v4 z)
+{
+	return _mm_xor_si128(_mm_or_si128(x, _mm_xor_si128(y, _mm_set1_epi32(-1))), z);
+}
+
+static RIPEMD_INLINE v4 I(v4 x, v4 y, v4 z)
+{
+	return _mm_or_si128(_mm_and_si128(x, z), _mm_andnot_si128(z, y));
+}
+
+static RIPEMD_INLINE v4 J(v4 x, v4 y, v4 z)
+{
+	return _mm_xor_si128(x, _mm_or_si128(y, _mm_xor_si128(z, _mm_set1_epi32(-1))));
+}
+
+static RIPEMD_INLINE void FF(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(F(b, c, d), x));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void GG(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(G(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K0))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void HH(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(H(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K1))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void II(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(I(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K2))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void JJ(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(J(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K3))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void FFF(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(F(b, c, d), x));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void GGG(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(G(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K4))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void HHH(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(H(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K5))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void III(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(I(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K6))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE void JJJ(v4 &a, v4 &b, v4 &c, v4 &d, v4 &e, v4 x, int s)
+{
+	a = _mm_add_epi32(a, _mm_add_epi32(J(b, c, d), _mm_add_epi32(x, _mm_set1_epi32((int)_K7))));
+	a = _mm_add_epi32(vrotl(a, s), e);
+	c = vrotl(c, 10);
+}
+
+static RIPEMD_INLINE v4 vendian(v4 x)
+{
+	return _mm_shuffle_epi8(x, _mm_setr_epi8(
+		3, 2, 1, 0,
+		7, 6, 5, 4,
+		11, 10, 9, 8,
+		15, 14, 13, 12));
+}
 
 #if defined(__GNUC__)
-#define RIPEMD_INLINE inline __attribute__((always_inline))
-#else
-#define RIPEMD_INLINE inline
+__attribute__((target("avx2"), noinline))
 #endif
-
-static RIPEMD_INLINE unsigned int endian(unsigned int x)
+static void ripemd160_4x(const unsigned int *msg, unsigned int *digest)
 {
-#if defined(__GNUC__)
-	return __builtin_bswap32(x);
-#else
-	return (x << 24) | ((x << 8) & 0x00ff0000) | ((x >> 8) & 0x0000ff00) | (x >> 24);
-#endif
-}
+	v4 x[16];
+	for(int i = 0; i < 16; i++) {
+		x[i] = _mm_setr_epi32(
+			(int)msg[i],
+			(int)msg[16 + i],
+			(int)msg[32 + i],
+			(int)msg[48 + i]);
+	}
 
-static RIPEMD_INLINE unsigned int rotl(unsigned int x, unsigned int n)
-{
-#ifdef __has_builtin
-#if __has_builtin(__builtin_rotateleft32)
-	return __builtin_rotateleft32(x, n);
-#endif
-#endif
-#if defined(_MSC_VER)
-	return _rotl(x, (int)n);
-#else
-	return (x << n) | (x >> (32u - n));
-#endif
-}
+	const v4 iv0 = _mm_set1_epi32((int)_IV[0]);
+	const v4 iv1 = _mm_set1_epi32((int)_IV[1]);
+	const v4 iv2 = _mm_set1_epi32((int)_IV[2]);
+	const v4 iv3 = _mm_set1_epi32((int)_IV[3]);
+	const v4 iv4 = _mm_set1_epi32((int)_IV[4]);
 
-static RIPEMD_INLINE unsigned int F(unsigned int x, unsigned int y, unsigned int z)
-{
-	return x ^ y ^ z;
-}
+	v4 a1 = iv0;
+	v4 b1 = iv1;
+	v4 c1 = iv2;
+	v4 d1 = iv3;
+	v4 e1 = iv4;
 
-static RIPEMD_INLINE unsigned int G(unsigned int x, unsigned int y, unsigned int z)
-{
-	return (((x) & (y)) | (~(x) & (z)));
-}
-
-static RIPEMD_INLINE unsigned int H(unsigned int x, unsigned int y, unsigned int z)
-{
-	return (((x) | ~(y)) ^ (z));
-}
-
-static RIPEMD_INLINE unsigned int I(unsigned int x, unsigned int y, unsigned int z)
-{
-	return (((x) & (z)) | ((y) & ~(z)));
-}
-
-static RIPEMD_INLINE unsigned int J(unsigned int x, unsigned int y, unsigned int z)
-{
-	return  ((x) ^ ((y) | ~(z)));
-}
-
-static RIPEMD_INLINE void FF(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += F(b, c, d) + x;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void GG(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += G(b, c, d) + x + _K0;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void HH(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += H(b, c, d) + x + _K1;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void II(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += I(b, c, d) + x + _K2;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void JJ(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += J(b, c, d) + x + _K3;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void FFF(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += F(b, c, d) + x;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void GGG(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += G(b, c, d) + x + _K4;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void HHH(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += H(b, c, d) + x + _K5;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void III(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += I(b, c, d) + x + _K6;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-static RIPEMD_INLINE void JJJ(unsigned int &a, unsigned int &b, unsigned int &c, unsigned int &d, unsigned int &e, unsigned int x, unsigned int s)
-{
-	a += J(b, c, d) + x + _K7;
-	a = rotl(a, s) + e;
-	c = rotl(c, 10);
-}
-
-void crypto::ripemd160(unsigned int *x, unsigned int *digest)
-{
-	unsigned int a1 = _IV[0];
-	unsigned int b1 = _IV[1];
-	unsigned int c1 = _IV[2];
-	unsigned int d1 = _IV[3];
-	unsigned int e1 = _IV[4];
-
-	unsigned int a2 = _IV[0];
-	unsigned int b2 = _IV[1];
-	unsigned int c2 = _IV[2];
-	unsigned int d2 = _IV[3];
-	unsigned int e2 = _IV[4];
+	v4 a2 = iv0;
+	v4 b2 = iv1;
+	v4 c2 = iv2;
+	v4 d2 = iv3;
+	v4 e2 = iv4;
 
 	/* round 1 */
 	FF(a1, b1, c1, d1, e1, x[0], 11);
@@ -339,44 +363,34 @@ void crypto::ripemd160(unsigned int *x, unsigned int *digest)
 	FFF(c2, d2, e2, a2, b2, x[9], 11);
 	FFF(b2, c2, d2, e2, a2, x[11], 11);
 
-	digest[0] = endian(_IV[1] + c1 + d2);
-	digest[1] = endian(_IV[2] + d1 + e2);
-	digest[2] = endian(_IV[3] + e1 + a2);
-	digest[3] = endian(_IV[4] + a1 + b2);
-	digest[4] = endian(_IV[0] + b1 + c2);
+
+	v4 d0 = vendian(_mm_add_epi32(_mm_add_epi32(iv1, c1), d2));
+	v4 d1o = vendian(_mm_add_epi32(_mm_add_epi32(iv2, d1), e2));
+	v4 d2o = vendian(_mm_add_epi32(_mm_add_epi32(iv3, e1), a2));
+	v4 d3o = vendian(_mm_add_epi32(_mm_add_epi32(iv4, a1), b2));
+	v4 d4o = vendian(_mm_add_epi32(_mm_add_epi32(iv0, b1), c2));
+
+	alignas(16) unsigned int tmp[4];
+	_mm_store_si128((__m128i *)tmp, d0);
+	digest[0] = tmp[0]; digest[5] = tmp[1]; digest[10] = tmp[2]; digest[15] = tmp[3];
+	_mm_store_si128((__m128i *)tmp, d1o);
+	digest[1] = tmp[0]; digest[6] = tmp[1]; digest[11] = tmp[2]; digest[16] = tmp[3];
+	_mm_store_si128((__m128i *)tmp, d2o);
+	digest[2] = tmp[0]; digest[7] = tmp[1]; digest[12] = tmp[2]; digest[17] = tmp[3];
+	_mm_store_si128((__m128i *)tmp, d3o);
+	digest[3] = tmp[0]; digest[8] = tmp[1]; digest[13] = tmp[2]; digest[18] = tmp[3];
+	_mm_store_si128((__m128i *)tmp, d4o);
+	digest[4] = tmp[0]; digest[9] = tmp[1]; digest[14] = tmp[2]; digest[19] = tmp[3];
 }
 
-#if defined(HAVE_AVX2)
-extern "C" void crypto_ripemd160_avx2(unsigned int *msg, unsigned int *digest);
+extern "C" {
+#if defined(__GNUC__)
+__attribute__((target("avx2")))
 #endif
-
-static bool detectRipemdAvx2()
+void crypto_ripemd160_avx2(unsigned int *msg, unsigned int *digest)
 {
-#if defined(HAVE_AVX2) && defined(__GNUC__)
-	__builtin_cpu_init();
-	return __builtin_cpu_supports("avx2");
-#else
-	return false;
+	ripemd160_4x(msg, digest);
+}
+}
+
 #endif
-}
-
-static const bool kUseRipemdAvx2 = detectRipemdAvx2();
-
-bool crypto::ripemd160UsesAvx2()
-{
-	return kUseRipemdAvx2;
-}
-
-void crypto::ripemd160x4(unsigned int msg[4][16], unsigned int digest[4][5])
-{
-#if defined(HAVE_AVX2)
-	if(kUseRipemdAvx2) {
-		crypto_ripemd160_avx2(&msg[0][0], &digest[0][0]);
-		return;
-	}
-#endif
-	crypto::ripemd160(msg[0], digest[0]);
-	crypto::ripemd160(msg[1], digest[1]);
-	crypto::ripemd160(msg[2], digest[2]);
-	crypto::ripemd160(msg[3], digest[3]);
-}

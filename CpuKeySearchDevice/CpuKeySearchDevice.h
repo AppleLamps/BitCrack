@@ -2,6 +2,7 @@
 #define _CPU_KEY_SEARCH_DEVICE_H
 
 #include "KeySearchDevice.h"
+#include <cstdint>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -19,12 +20,15 @@ private:
     secp256k1::uint256 _startExponent;
     secp256k1::uint256 _stride;
     secp256k1::uint256 _endKey;
-    secp256k1::ecpoint _stepIncrement;
+    uint64_t _stepQx[4];
+    uint64_t _stepQy[4];
     bool _clipToEnd;
 
     uint64_t _iterations;
 
-    std::vector<secp256k1::ecpoint> _points;
+    // Working points as 4 little-endian 64-bit field limbs each (n*4).
+    std::vector<uint64_t> _fx;
+    std::vector<uint64_t> _fy;
     std::set<KeySearchTarget> _targets;
     unsigned int _singleTargetHash[5];
     bool _singleTarget;
@@ -33,9 +37,10 @@ private:
     std::mutex _resultsMutex;
 
     void processOne(uint64_t index);
+    void processFour(uint64_t index);
     void processRange(uint64_t begin, uint64_t end);
     void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t), uint64_t totalPoints);
-    bool checkAndRecord(uint64_t index, const secp256k1::ecpoint &point, bool compressed, const unsigned int digest[5]);
+    bool checkAndRecord(uint64_t index, bool compressed, const unsigned int digest[5]);
     uint64_t keysToHashThisStep();
     secp256k1::uint256 privateKeyAtIndex(uint64_t index);
 

@@ -175,7 +175,7 @@ Build CPU only (no GPU required):
 make BUILD_CPU=1
 ```
 
-On CPU, increase `-p` (keys per thread) to keep the batch large. Defaults are the host core count and `-p 4096`. CPU builds use `-O3 -march=native -fopenmp` and, on x86_64, Intel SHA-NI when the CPU supports it. Example:
+On CPU, increase `-p` (keys per thread) to keep the batch large. Defaults are the host core count and `-p 4096`. CPU builds use `-O3 -march=native -fopenmp` with 64-bit secp256k1 field arithmetic. On x86_64 they also use Intel SHA-NI and AVX2 4-way RIPEMD-160 when the CPU supports them. Example:
 
 ```
 ./bin/cpuBitCrack -t 4 -p 4096 --keyspace START:END <address>

@@ -29,6 +29,16 @@ namespace Hash {
 	void hashPublicKey(const unsigned int *x, const unsigned int *y, unsigned int *digest);
 	void hashPublicKeyCompressed(const unsigned int *x, const unsigned int *y, unsigned int *digest);
 
+	/* xLe: 8 little-endian uint32 limbs (v[0] = least significant). yParity: 0 or 1. */
+	void hashPublicKeyCompressed(const unsigned int *xLe, unsigned int yParity, unsigned int *digest);
+	/* xLe: 4 little-endian uint64 limbs. yParity: 0 or 1. */
+	void hashPublicKeyCompressed(const uint64_t *xLe, unsigned int yParity, unsigned int *digest);
+
+	void hashPublicKeyCompressed2(const unsigned int *xLe0, unsigned int yParity0, unsigned int *digest0,
+		const unsigned int *xLe1, unsigned int yParity1, unsigned int *digest1);
+	void hashPublicKeyCompressed2(const uint64_t *xLe0, unsigned int yParity0, unsigned int *digest0,
+		const uint64_t *xLe1, unsigned int yParity1, unsigned int *digest1);
+
 };
 
 

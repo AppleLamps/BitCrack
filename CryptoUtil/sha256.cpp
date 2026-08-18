@@ -58,6 +58,8 @@ static inline void round(unsigned int a, unsigned int b, unsigned int c, unsigne
 
 #if defined(HAVE_SHA_NI)
 extern "C" void crypto_sha256_shani(unsigned int *msg, unsigned int *digest);
+extern "C" void crypto_sha256_shani2(unsigned int *msg0, unsigned int *digest0,
+	unsigned int *msg1, unsigned int *digest1);
 #endif
 
 static bool detectShaNi()
@@ -83,9 +85,14 @@ bool crypto::sha256UsesHardware()
 
 void crypto::sha256Init(unsigned int *digest)
 {
-	for(int i = 0; i < 8; i++) {
-		digest[i] = _IV[i];
-	}
+	digest[0] = _IV[0];
+	digest[1] = _IV[1];
+	digest[2] = _IV[2];
+	digest[3] = _IV[3];
+	digest[4] = _IV[4];
+	digest[5] = _IV[5];
+	digest[6] = _IV[6];
+	digest[7] = _IV[7];
 }
 
 static void sha256Software(unsigned int *msg, unsigned int *digest)
@@ -147,4 +154,16 @@ void crypto::sha256(unsigned int *msg, unsigned int *digest)
 	}
 #endif
 	sha256Software(msg, digest);
+}
+
+void crypto::sha2562(unsigned int *msg0, unsigned int *digest0, unsigned int *msg1, unsigned int *digest1)
+{
+#if defined(HAVE_SHA_NI)
+	if(kUseShaNi) {
+		crypto_sha256_shani2(msg0, digest0, msg1, digest1);
+		return;
+	}
+#endif
+	sha256Software(msg0, digest0);
+	sha256Software(msg1, digest1);
 }

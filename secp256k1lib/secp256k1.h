@@ -3,6 +3,7 @@
 
 #include<stdio.h>
 #include<stdint.h>
+#include<stddef.h>
 #include<string.h>
 #include<string>
 #include<vector>
@@ -353,6 +354,12 @@ namespace secp256k1 {
 	// Add Q to every point using Montgomery batch inversion.
 	// threads > 1 splits the batch across workers (OpenMP when available).
 	void addPointsBulk(std::vector<ecpoint> &points, const ecpoint &q, int threads = 1);
+
+	// Same as addPointsBulk, but x/y are n points stored as 4 little-endian
+	// 64-bit limbs each (n*4). qx/qy are Q in the same limb layout.
+	// Skips point-at-infinity checks (puzzle search never hits infinity);
+	// still handles doubling and the x==qx opposite-point case.
+	void addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64_t qx[4], const uint64_t qy[4], int threads = 1);
 
 	uint256 invModP(const uint256 &x);
 
