@@ -1,0 +1,198 @@
+### ./bin/kangaroo --bits 30 --benchmark 200 --arms 3:fold --jumps 4096 --seed 101 -t 8
+
+Benchmark: 200 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/200   3-charge {0,+1,-1} 1.8015*sqrt(w)   folded 2-charge    1.9017*sqrt(w)   speedup 0.9473      10/200   3-charge {0,+1,-1} 1.8267*sqrt(w)   folded 2-charge    1.5628*sqrt(w)   speedup 1.1689      15/200   3-charge {0,+1,-1} 1.9053*sqrt(w)   folded 2-charge    1.6531*sqrt(w)   speedup 1.1525      20/200   3-charge {0,+1,-1} 1.7911*sqrt(w)   folded 2-charge    1.7120*sqrt(w)   speedup 1.0462      25/200   3-charge {0,+1,-1} 1.8381*sqrt(w)   folded 2-charge    1.7193*sqrt(w)   speedup 1.0691      30/200   3-charge {0,+1,-1} 1.9867*sqrt(w)   folded 2-charge    1.7375*sqrt(w)   speedup 1.1434      35/200   3-charge {0,+1,-1} 1.8588*sqrt(w)   folded 2-charge    1.7033*sqrt(w)   speedup 1.0913      40/200   3-charge {0,+1,-1} 1.9089*sqrt(w)   folded 2-charge    1.6941*sqrt(w)   speedup 1.1268      45/200   3-charge {0,+1,-1} 1.8503*sqrt(w)   folded 2-charge    1.6280*sqrt(w)   speedup 1.1365      50/200   3-charge {0,+1,-1} 1.8481*sqrt(w)   folded 2-charge    1.6554*sqrt(w)   speedup 1.1164      55/200   3-charge {0,+1,-1} 1.8360*sqrt(w)   folded 2-charge    1.5856*sqrt(w)   speedup 1.1579      60/200   3-charge {0,+1,-1} 1.8699*sqrt(w)   folded 2-charge    1.5605*sqrt(w)   speedup 1.1982      65/200   3-charge {0,+1,-1} 1.8355*sqrt(w)   folded 2-charge    1.5614*sqrt(w)   speedup 1.1756      70/200   3-charge {0,+1,-1} 1.8139*sqrt(w)   folded 2-charge    1.5799*sqrt(w)   speedup 1.1481      75/200   3-charge {0,+1,-1} 1.8958*sqrt(w)   folded 2-charge    1.5962*sqrt(w)   speedup 1.1877      80/200   3-charge {0,+1,-1} 1.8876*sqrt(w)   folded 2-charge    1.6056*sqrt(w)   speedup 1.1756      85/200   3-charge {0,+1,-1} 1.9082*sqrt(w)   folded 2-charge    1.6200*sqrt(w)   speedup 1.1779      90/200   3-charge {0,+1,-1} 1.9183*sqrt(w)   folded 2-charge    1.5678*sqrt(w)   speedup 1.2235      95/200   3-charge {0,+1,-1} 1.8623*sqrt(w)   folded 2-charge    1.5303*sqrt(w)   speedup 1.2170     100/200   3-charge {0,+1,-1} 1.8928*sqrt(w)   folded 2-charge    1.5552*sqrt(w)   speedup 1.2170     105/200   3-charge {0,+1,-1} 1.8848*sqrt(w)   folded 2-charge    1.5462*sqrt(w)   speedup 1.2190     110/200   3-charge {0,+1,-1} 1.8989*sqrt(w)   folded 2-charge    1.5288*sqrt(w)   speedup 1.2421     115/200   3-charge {0,+1,-1} 1.9100*sqrt(w)   folded 2-charge    1.5322*sqrt(w)   speedup 1.2466     120/200   3-charge {0,+1,-1} 1.9036*sqrt(w)   folded 2-charge    1.5254*sqrt(w)   speedup 1.2479     125/200   3-charge {0,+1,-1} 1.8984*sqrt(w)   folded 2-charge    1.5174*sqrt(w)   speedup 1.2511     130/200   3-charge {0,+1,-1} 1.9285*sqrt(w)   folded 2-charge    1.5313*sqrt(w)   speedup 1.2594     135/200   3-charge {0,+1,-1} 1.9563*sqrt(w)   folded 2-charge    1.5234*sqrt(w)   speedup 1.2841     140/200   3-charge {0,+1,-1} 1.9445*sqrt(w)   folded 2-charge    1.5334*sqrt(w)   speedup 1.2681     145/200   3-charge {0,+1,-1} 1.9190*sqrt(w)   folded 2-charge    1.5286*sqrt(w)   speedup 1.2554     150/200   3-charge {0,+1,-1} 1.9245*sqrt(w)   folded 2-charge    1.5433*sqrt(w)   speedup 1.2470     155/200   3-charge {0,+1,-1} 1.9351*sqrt(w)   folded 2-charge    1.5311*sqrt(w)   speedup 1.2638     160/200   3-charge {0,+1,-1} 1.9256*sqrt(w)   folded 2-charge    1.5412*sqrt(w)   speedup 1.2494     165/200   3-charge {0,+1,-1} 1.9366*sqrt(w)   folded 2-charge    1.5523*sqrt(w)   speedup 1.2476     170/200   3-charge {0,+1,-1} 1.9525*sqrt(w)   folded 2-charge    1.5581*sqrt(w)   speedup 1.2531     175/200   3-charge {0,+1,-1} 1.9803*sqrt(w)   folded 2-charge    1.5447*sqrt(w)   speedup 1.2820     180/200   3-charge {0,+1,-1} 1.9734*sqrt(w)   folded 2-charge    1.5198*sqrt(w)   speedup 1.2985     185/200   3-charge {0,+1,-1} 1.9613*sqrt(w)   folded 2-charge    1.5108*sqrt(w)   speedup 1.2982     190/200   3-charge {0,+1,-1} 1.9578*sqrt(w)   folded 2-charge    1.5080*sqrt(w)   speedup 1.2983     195/200   3-charge {0,+1,-1} 1.9566*sqrt(w)   folded 2-charge    1.5100*sqrt(w)   speedup 1.2958     200/200   3-charge {0,+1,-1} 1.9609*sqrt(w)   folded 2-charge    1.4945*sqrt(w)   speedup 1.3121   
+
+  3-charge {0,+1,-1}  1.9609 +/- 0.0739 sqrt(w)   merges/solve 2.08   cycles/solve 0.00   n=200
+  folded 2-charge     1.4945 +/- 0.0581 sqrt(w)   merges/solve 15.48   cycles/solve 4.92   n=200
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.365   tame/refl 0.375   wild/refl 0.260
+    folded 2-charge     tame/wild 0.410   tame/refl 0.430   wild/refl 0.160
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  1.9721 sqrt(w)
+    folded 2-charge     1.5155 sqrt(w)
+    speedup on walk+reseed ops = 1.3012
+  verification failures: 0 (must be 0)
+
+  speedup = 1.3121 +/- 0.0710      predicted ceiling 1.4142
+[run 1 exit=0 elapsed=48s]
+### ./bin/kangaroo --bits 30 --benchmark 200 --arms 2:fold --jumps 4096 --seed 103 -t 8
+
+Benchmark: 200 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/200   2-charge {0,+1}    2.5497*sqrt(w)   folded 2-charge    2.1976*sqrt(w)   speedup 1.1603      10/200   2-charge {0,+1}    2.9902*sqrt(w)   folded 2-charge    1.6167*sqrt(w)   speedup 1.8496      15/200   2-charge {0,+1}    2.8077*sqrt(w)   folded 2-charge    1.6490*sqrt(w)   speedup 1.7027      20/200   2-charge {0,+1}    2.5628*sqrt(w)   folded 2-charge    1.6844*sqrt(w)   speedup 1.5215      25/200   2-charge {0,+1}    2.5792*sqrt(w)   folded 2-charge    1.5209*sqrt(w)   speedup 1.6959      30/200   2-charge {0,+1}    2.4642*sqrt(w)   folded 2-charge    1.4028*sqrt(w)   speedup 1.7567      35/200   2-charge {0,+1}    2.4506*sqrt(w)   folded 2-charge    1.4742*sqrt(w)   speedup 1.6624      40/200   2-charge {0,+1}    2.3775*sqrt(w)   folded 2-charge    1.4823*sqrt(w)   speedup 1.6039      45/200   2-charge {0,+1}    2.3370*sqrt(w)   folded 2-charge    1.5077*sqrt(w)   speedup 1.5501      50/200   2-charge {0,+1}    2.2832*sqrt(w)   folded 2-charge    1.4986*sqrt(w)   speedup 1.5235      55/200   2-charge {0,+1}    2.2389*sqrt(w)   folded 2-charge    1.4732*sqrt(w)   speedup 1.5197      60/200   2-charge {0,+1}    2.2020*sqrt(w)   folded 2-charge    1.4871*sqrt(w)   speedup 1.4808      65/200   2-charge {0,+1}    2.2119*sqrt(w)   folded 2-charge    1.4497*sqrt(w)   speedup 1.5257      70/200   2-charge {0,+1}    2.2316*sqrt(w)   folded 2-charge    1.5106*sqrt(w)   speedup 1.4773      75/200   2-charge {0,+1}    2.2355*sqrt(w)   folded 2-charge    1.5346*sqrt(w)   speedup 1.4567      80/200   2-charge {0,+1}    2.2247*sqrt(w)   folded 2-charge    1.5186*sqrt(w)   speedup 1.4650      85/200   2-charge {0,+1}    2.2600*sqrt(w)   folded 2-charge    1.5072*sqrt(w)   speedup 1.4995      90/200   2-charge {0,+1}    2.3132*sqrt(w)   folded 2-charge    1.4697*sqrt(w)   speedup 1.5739      95/200   2-charge {0,+1}    2.3026*sqrt(w)   folded 2-charge    1.4816*sqrt(w)   speedup 1.5541     100/200   2-charge {0,+1}    2.2585*sqrt(w)   folded 2-charge    1.4641*sqrt(w)   speedup 1.5426     105/200   2-charge {0,+1}    2.2480*sqrt(w)   folded 2-charge    1.4429*sqrt(w)   speedup 1.5580     110/200   2-charge {0,+1}    2.2484*sqrt(w)   folded 2-charge    1.4563*sqrt(w)   speedup 1.5439     115/200   2-charge {0,+1}    2.2160*sqrt(w)   folded 2-charge    1.4700*sqrt(w)   speedup 1.5075     120/200   2-charge {0,+1}    2.2197*sqrt(w)   folded 2-charge    1.4678*sqrt(w)   speedup 1.5123     125/200   2-charge {0,+1}    2.2484*sqrt(w)   folded 2-charge    1.4701*sqrt(w)   speedup 1.5295     130/200   2-charge {0,+1}    2.2351*sqrt(w)   folded 2-charge    1.4560*sqrt(w)   speedup 1.5351     135/200   2-charge {0,+1}    2.2116*sqrt(w)   folded 2-charge    1.4417*sqrt(w)   speedup 1.5341     140/200   2-charge {0,+1}    2.2064*sqrt(w)   folded 2-charge    1.4325*sqrt(w)   speedup 1.5403     145/200   2-charge {0,+1}    2.1905*sqrt(w)   folded 2-charge    1.4422*sqrt(w)   speedup 1.5189     150/200   2-charge {0,+1}    2.2448*sqrt(w)   folded 2-charge    1.4475*sqrt(w)   speedup 1.5508     155/200   2-charge {0,+1}    2.2328*sqrt(w)   folded 2-charge    1.4541*sqrt(w)   speedup 1.5355     160/200   2-charge {0,+1}    2.2238*sqrt(w)   folded 2-charge    1.4573*sqrt(w)   speedup 1.5260     165/200   2-charge {0,+1}    2.2433*sqrt(w)   folded 2-charge    1.4499*sqrt(w)   speedup 1.5473     170/200   2-charge {0,+1}    2.2533*sqrt(w)   folded 2-charge    1.4539*sqrt(w)   speedup 1.5498     175/200   2-charge {0,+1}    2.2674*sqrt(w)   folded 2-charge    1.4438*sqrt(w)   speedup 1.5704     180/200   2-charge {0,+1}    2.2470*sqrt(w)   folded 2-charge    1.4400*sqrt(w)   speedup 1.5604     185/200   2-charge {0,+1}    2.2809*sqrt(w)   folded 2-charge    1.4599*sqrt(w)   speedup 1.5623     190/200   2-charge {0,+1}    2.2731*sqrt(w)   folded 2-charge    1.4624*sqrt(w)   speedup 1.5543     195/200   2-charge {0,+1}    2.2784*sqrt(w)   folded 2-charge    1.4512*sqrt(w)   speedup 1.5700     200/200   2-charge {0,+1}    2.2786*sqrt(w)   folded 2-charge    1.4465*sqrt(w)   speedup 1.5753   
+
+  2-charge {0,+1}     2.2786 +/- 0.0893 sqrt(w)   merges/solve 3.01   cycles/solve 0.00   n=200
+  folded 2-charge     1.4465 +/- 0.0537 sqrt(w)   merges/solve 14.94   cycles/solve 5.12   n=200
+
+  solving collision by charge pair:
+    2-charge {0,+1}     tame/wild 1.000   tame/refl 0.000   wild/refl 0.000
+    folded 2-charge     tame/wild 0.440   tame/refl 0.405   wild/refl 0.155
+
+  walk plus reseed point operations (pool build excluded):
+    2-charge {0,+1}     2.2905 sqrt(w)
+    folded 2-charge     1.4674 sqrt(w)
+    speedup on walk+reseed ops = 1.5609
+  verification failures: 0 (must be 0)
+
+  speedup = 1.5753 +/- 0.0850      predicted ceiling 1.4142
+[run 2 exit=0 elapsed=55s]
+### ./bin/kangaroo --bits 32 --benchmark 100 --arms 3:fold --jumps 4096 --seed 109 -t 8
+
+Benchmark: 100 paired trials, range 2^32, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/100   3-charge {0,+1,-1} 1.8545*sqrt(w)   folded 2-charge    1.3768*sqrt(w)   speedup 1.3470      10/100   3-charge {0,+1,-1} 2.4250*sqrt(w)   folded 2-charge    1.1835*sqrt(w)   speedup 2.0490      15/100   3-charge {0,+1,-1} 2.1528*sqrt(w)   folded 2-charge    1.5138*sqrt(w)   speedup 1.4221      20/100   3-charge {0,+1,-1} 2.0016*sqrt(w)   folded 2-charge    1.5202*sqrt(w)   speedup 1.3166      25/100   3-charge {0,+1,-1} 2.1381*sqrt(w)   folded 2-charge    1.4984*sqrt(w)   speedup 1.4269      30/100   3-charge {0,+1,-1} 2.1478*sqrt(w)   folded 2-charge    1.5357*sqrt(w)   speedup 1.3986      35/100   3-charge {0,+1,-1} 2.1076*sqrt(w)   folded 2-charge    1.5589*sqrt(w)   speedup 1.3520      40/100   3-charge {0,+1,-1} 2.0230*sqrt(w)   folded 2-charge    1.5338*sqrt(w)   speedup 1.3189      45/100   3-charge {0,+1,-1} 1.9900*sqrt(w)   folded 2-charge    1.5308*sqrt(w)   speedup 1.3000      50/100   3-charge {0,+1,-1} 1.9583*sqrt(w)   folded 2-charge    1.4884*sqrt(w)   speedup 1.3157      55/100   3-charge {0,+1,-1} 1.9524*sqrt(w)   folded 2-charge    1.5039*sqrt(w)   speedup 1.2982      60/100   3-charge {0,+1,-1} 1.9560*sqrt(w)   folded 2-charge    1.5760*sqrt(w)   speedup 1.2411      65/100   3-charge {0,+1,-1} 1.9443*sqrt(w)   folded 2-charge    1.5554*sqrt(w)   speedup 1.2501      70/100   3-charge {0,+1,-1} 1.8955*sqrt(w)   folded 2-charge    1.5507*sqrt(w)   speedup 1.2223      75/100   3-charge {0,+1,-1} 1.8332*sqrt(w)   folded 2-charge    1.5498*sqrt(w)   speedup 1.1829      80/100   3-charge {0,+1,-1} 1.8505*sqrt(w)   folded 2-charge    1.5304*sqrt(w)   speedup 1.2092      85/100   3-charge {0,+1,-1} 1.8658*sqrt(w)   folded 2-charge    1.5136*sqrt(w)   speedup 1.2327      90/100   3-charge {0,+1,-1} 1.8945*sqrt(w)   folded 2-charge    1.4961*sqrt(w)   speedup 1.2662      95/100   3-charge {0,+1,-1} 1.9076*sqrt(w)   folded 2-charge    1.5055*sqrt(w)   speedup 1.2670     100/100   3-charge {0,+1,-1} 1.8949*sqrt(w)   folded 2-charge    1.5240*sqrt(w)   speedup 1.2434   
+
+  3-charge {0,+1,-1}  1.8949 +/- 0.1064 sqrt(w)   merges/solve 2.05   cycles/solve 0.00   n=100
+  folded 2-charge     1.5240 +/- 0.0863 sqrt(w)   merges/solve 23.81   cycles/solve 9.13   n=100
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.310   tame/refl 0.420   wild/refl 0.270
+    folded 2-charge     tame/wild 0.370   tame/refl 0.490   wild/refl 0.140
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  1.9005 sqrt(w)
+    folded 2-charge     1.5347 sqrt(w)
+    speedup on walk+reseed ops = 1.2383
+  verification failures: 0 (must be 0)
+
+  speedup = 1.2434 +/- 0.0992      predicted ceiling 1.4142
+[run 3 exit=0 elapsed=28s]
+### ./bin/kangaroo --bits 34 --benchmark 60 --arms 3:fold --jumps 4096 --seed 107 -t 8
+
+Benchmark: 60 paired trials, range 2^34, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/60   3-charge {0,+1,-1} 1.7085*sqrt(w)   folded 2-charge    1.5214*sqrt(w)   speedup 1.1230      10/60   3-charge {0,+1,-1} 1.8941*sqrt(w)   folded 2-charge    1.7230*sqrt(w)   speedup 1.0993      15/60   3-charge {0,+1,-1} 2.0179*sqrt(w)   folded 2-charge    1.5427*sqrt(w)   speedup 1.3080      20/60   3-charge {0,+1,-1} 1.9167*sqrt(w)   folded 2-charge    1.6178*sqrt(w)   speedup 1.1848      25/60   3-charge {0,+1,-1} 1.9213*sqrt(w)   folded 2-charge    1.4620*sqrt(w)   speedup 1.3142      30/60   3-charge {0,+1,-1} 1.9053*sqrt(w)   folded 2-charge    1.4550*sqrt(w)   speedup 1.3095      35/60   3-charge {0,+1,-1} 1.8824*sqrt(w)   folded 2-charge    1.4722*sqrt(w)   speedup 1.2787      40/60   3-charge {0,+1,-1} 2.0172*sqrt(w)   folded 2-charge    1.4675*sqrt(w)   speedup 1.3746      45/60   3-charge {0,+1,-1} 2.0293*sqrt(w)   folded 2-charge    1.4994*sqrt(w)   speedup 1.3534      50/60   3-charge {0,+1,-1} 2.0418*sqrt(w)   folded 2-charge    1.5592*sqrt(w)   speedup 1.3095      55/60   3-charge {0,+1,-1} 1.9855*sqrt(w)   folded 2-charge    1.5436*sqrt(w)   speedup 1.2862      60/60   3-charge {0,+1,-1} 1.9632*sqrt(w)   folded 2-charge    1.6166*sqrt(w)   speedup 1.2144   
+
+  3-charge {0,+1,-1}  1.9632 +/- 0.1276 sqrt(w)   merges/solve 1.68   cycles/solve 0.00   n=60
+  folded 2-charge     1.6166 +/- 0.1185 sqrt(w)   merges/solve 40.05   cycles/solve 19.10   n=60
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.317   tame/refl 0.517   wild/refl 0.167
+    folded 2-charge     tame/wild 0.450   tame/refl 0.383   wild/refl 0.167
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  1.9660 sqrt(w)
+    folded 2-charge     1.6223 sqrt(w)
+    speedup on walk+reseed ops = 1.2119
+  verification failures: 0 (must be 0)
+
+  speedup = 1.2144 +/- 0.1189      predicted ceiling 1.4142
+[run 4 exit=0 elapsed=23s]
+### ./bin/kangaroo --bits 30 --benchmark 60 --arms 3:fold --jumps 1024 --seed 113 -t 8
+
+Benchmark: 60 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/60   3-charge {0,+1,-1} 2.7063*sqrt(w)   folded 2-charge    2.2672*sqrt(w)   speedup 1.1937      10/60   3-charge {0,+1,-1} 2.2493*sqrt(w)   folded 2-charge    1.9585*sqrt(w)   speedup 1.1485      15/60   3-charge {0,+1,-1} 2.1594*sqrt(w)   folded 2-charge    1.7752*sqrt(w)   speedup 1.2164      20/60   3-charge {0,+1,-1} 2.0739*sqrt(w)   folded 2-charge    1.6892*sqrt(w)   speedup 1.2277      25/60   3-charge {0,+1,-1} 1.9669*sqrt(w)   folded 2-charge    1.7020*sqrt(w)   speedup 1.1556      30/60   3-charge {0,+1,-1} 1.9879*sqrt(w)   folded 2-charge    1.6565*sqrt(w)   speedup 1.2001      35/60   3-charge {0,+1,-1} 2.0566*sqrt(w)   folded 2-charge    1.6026*sqrt(w)   speedup 1.2833      40/60   3-charge {0,+1,-1} 1.9769*sqrt(w)   folded 2-charge    1.5427*sqrt(w)   speedup 1.2815      45/60   3-charge {0,+1,-1} 2.0457*sqrt(w)   folded 2-charge    1.5294*sqrt(w)   speedup 1.3376      50/60   3-charge {0,+1,-1} 2.0356*sqrt(w)   folded 2-charge    1.5448*sqrt(w)   speedup 1.3177      55/60   3-charge {0,+1,-1} 1.9991*sqrt(w)   folded 2-charge    1.5769*sqrt(w)   speedup 1.2678      60/60   3-charge {0,+1,-1} 2.0909*sqrt(w)   folded 2-charge    1.6036*sqrt(w)   speedup 1.3039   
+
+  3-charge {0,+1,-1}  2.0909 +/- 0.1623 sqrt(w)   merges/solve 2.57   cycles/solve 0.00   n=60
+  folded 2-charge     1.6036 +/- 0.1043 sqrt(w)   merges/solve 30.10   cycles/solve 18.90   n=60
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.433   tame/refl 0.350   wild/refl 0.217
+    folded 2-charge     tame/wild 0.433   tame/refl 0.400   wild/refl 0.167
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  2.1021 sqrt(w)
+    folded 2-charge     1.6255 sqrt(w)
+    speedup on walk+reseed ops = 1.2932
+  verification failures: 0 (must be 0)
+
+  speedup = 1.3039 +/- 0.1321      predicted ceiling 1.4142
+[run 5 exit=0 elapsed=8s]
+### ./bin/kangaroo --bits 30 --benchmark 60 --arms 3:fold --jumps 16384 --seed 113 -t 8
+
+Benchmark: 60 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/60   3-charge {0,+1,-1} 2.2373*sqrt(w)   folded 2-charge    1.1477*sqrt(w)   speedup 1.9495      10/60   3-charge {0,+1,-1} 2.5245*sqrt(w)   folded 2-charge    1.2674*sqrt(w)   speedup 1.9918      15/60   3-charge {0,+1,-1} 2.8533*sqrt(w)   folded 2-charge    1.3112*sqrt(w)   speedup 2.1761      20/60   3-charge {0,+1,-1} 2.7188*sqrt(w)   folded 2-charge    1.3828*sqrt(w)   speedup 1.9661      25/60   3-charge {0,+1,-1} 2.7165*sqrt(w)   folded 2-charge    1.3288*sqrt(w)   speedup 2.0443      30/60   3-charge {0,+1,-1} 2.6044*sqrt(w)   folded 2-charge    1.3099*sqrt(w)   speedup 1.9882      35/60   3-charge {0,+1,-1} 2.5139*sqrt(w)   folded 2-charge    1.2874*sqrt(w)   speedup 1.9527      40/60   3-charge {0,+1,-1} 2.6527*sqrt(w)   folded 2-charge    1.2528*sqrt(w)   speedup 2.1174      45/60   3-charge {0,+1,-1} 2.6308*sqrt(w)   folded 2-charge    1.2690*sqrt(w)   speedup 2.0731      50/60   3-charge {0,+1,-1} 2.5120*sqrt(w)   folded 2-charge    1.2715*sqrt(w)   speedup 1.9757      55/60   3-charge {0,+1,-1} 2.4806*sqrt(w)   folded 2-charge    1.3242*sqrt(w)   speedup 1.8733      60/60   3-charge {0,+1,-1} 2.4511*sqrt(w)   folded 2-charge    1.3424*sqrt(w)   speedup 1.8259   
+
+  3-charge {0,+1,-1}  2.4511 +/- 0.1611 sqrt(w)   merges/solve 2.37   cycles/solve 0.00   n=60
+  folded 2-charge     1.3424 +/- 0.0877 sqrt(w)   merges/solve 10.47   cycles/solve 1.63   n=60
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.300   tame/refl 0.433   wild/refl 0.267
+    folded 2-charge     tame/wild 0.333   tame/refl 0.467   wild/refl 0.200
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  2.4623 sqrt(w)
+    folded 2-charge     1.3631 sqrt(w)
+    speedup on walk+reseed ops = 1.8064
+  verification failures: 0 (must be 0)
+
+  speedup = 1.8259 +/- 0.1693      predicted ceiling 1.4142
+[run 6 exit=0 elapsed=42s]
+### ./bin/kangaroo --bits 30 --benchmark 60 --arms 3:fold --jumps 4096 --cycle-hist 2 --seed 127 -t 8
+
+Benchmark: 60 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/60   3-charge {0,+1,-1} 2.4362*sqrt(w)   folded 2-charge    1.2322*sqrt(w)   speedup 1.9771      10/60   3-charge {0,+1,-1} 2.0770*sqrt(w)   folded 2-charge    1.3246*sqrt(w)   speedup 1.5680      15/60   3-charge {0,+1,-1} 2.2638*sqrt(w)   folded 2-charge    1.3869*sqrt(w)   speedup 1.6323      20/60   3-charge {0,+1,-1} 2.3076*sqrt(w)   folded 2-charge    1.3778*sqrt(w)   speedup 1.6748      25/60   3-charge {0,+1,-1} 2.3407*sqrt(w)   folded 2-charge    1.5290*sqrt(w)   speedup 1.5309      30/60   3-charge {0,+1,-1} 2.2669*sqrt(w)   folded 2-charge    1.4206*sqrt(w)   speedup 1.5958      35/60   3-charge {0,+1,-1} 2.1301*sqrt(w)   folded 2-charge    1.4219*sqrt(w)   speedup 1.4980      40/60   3-charge {0,+1,-1} 2.1841*sqrt(w)   folded 2-charge    1.3816*sqrt(w)   speedup 1.5809      45/60   3-charge {0,+1,-1} 2.1232*sqrt(w)   folded 2-charge    1.4094*sqrt(w)   speedup 1.5064      50/60   3-charge {0,+1,-1} 2.0819*sqrt(w)   folded 2-charge    1.4031*sqrt(w)   speedup 1.4837      55/60   3-charge {0,+1,-1} 2.0971*sqrt(w)   folded 2-charge    1.4524*sqrt(w)   speedup 1.4439      60/60   3-charge {0,+1,-1} 2.0860*sqrt(w)   folded 2-charge    1.4354*sqrt(w)   speedup 1.4533   
+
+  3-charge {0,+1,-1}  2.0860 +/- 0.1417 sqrt(w)   merges/solve 1.65   cycles/solve 0.00   n=60
+  folded 2-charge     1.4354 +/- 0.1138 sqrt(w)   merges/solve 14.85   cycles/solve 4.22   n=60
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.433   tame/refl 0.267   wild/refl 0.300
+    folded 2-charge     tame/wild 0.300   tame/refl 0.483   wild/refl 0.217
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  2.0972 sqrt(w)
+    folded 2-charge     1.4564 sqrt(w)
+    speedup on walk+reseed ops = 1.4400
+  verification failures: 0 (must be 0)
+
+  speedup = 1.4533 +/- 0.1517      predicted ceiling 1.4142
+[run 7 exit=0 elapsed=13s]
+### ./bin/kangaroo --bits 30 --benchmark 60 --arms 3:fold --jumps 4096 --cycle-hist 8 --seed 127 -t 8
+
+Benchmark: 60 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/60   3-charge {0,+1,-1} 2.4362*sqrt(w)   folded 2-charge    1.2322*sqrt(w)   speedup 1.9771      10/60   3-charge {0,+1,-1} 2.0770*sqrt(w)   folded 2-charge    1.3246*sqrt(w)   speedup 1.5680      15/60   3-charge {0,+1,-1} 2.2638*sqrt(w)   folded 2-charge    1.3869*sqrt(w)   speedup 1.6323      20/60   3-charge {0,+1,-1} 2.3076*sqrt(w)   folded 2-charge    1.3778*sqrt(w)   speedup 1.6748      25/60   3-charge {0,+1,-1} 2.3407*sqrt(w)   folded 2-charge    1.5290*sqrt(w)   speedup 1.5309      30/60   3-charge {0,+1,-1} 2.2669*sqrt(w)   folded 2-charge    1.4206*sqrt(w)   speedup 1.5958      35/60   3-charge {0,+1,-1} 2.1301*sqrt(w)   folded 2-charge    1.4219*sqrt(w)   speedup 1.4980      40/60   3-charge {0,+1,-1} 2.1841*sqrt(w)   folded 2-charge    1.3816*sqrt(w)   speedup 1.5809      45/60   3-charge {0,+1,-1} 2.1232*sqrt(w)   folded 2-charge    1.4094*sqrt(w)   speedup 1.5064      50/60   3-charge {0,+1,-1} 2.0819*sqrt(w)   folded 2-charge    1.4031*sqrt(w)   speedup 1.4837      55/60   3-charge {0,+1,-1} 2.0971*sqrt(w)   folded 2-charge    1.4524*sqrt(w)   speedup 1.4439      60/60   3-charge {0,+1,-1} 2.0860*sqrt(w)   folded 2-charge    1.4354*sqrt(w)   speedup 1.4533   
+
+  3-charge {0,+1,-1}  2.0860 +/- 0.1417 sqrt(w)   merges/solve 1.65   cycles/solve 0.00   n=60
+  folded 2-charge     1.4354 +/- 0.1138 sqrt(w)   merges/solve 14.85   cycles/solve 5.12   n=60
+
+  solving collision by charge pair:
+    3-charge {0,+1,-1}  tame/wild 0.433   tame/refl 0.267   wild/refl 0.300
+    folded 2-charge     tame/wild 0.300   tame/refl 0.483   wild/refl 0.217
+
+  walk plus reseed point operations (pool build excluded):
+    3-charge {0,+1,-1}  2.0972 sqrt(w)
+    folded 2-charge     1.4564 sqrt(w)
+    speedup on walk+reseed ops = 1.4400
+  verification failures: 0 (must be 0)
+
+  speedup = 1.4533 +/- 0.1517      predicted ceiling 1.4142
+[run 8 exit=0 elapsed=13s]
+### ./bin/kangaroo --bits 30 --benchmark 60 --arms fold:fold3 --jumps 4096 --seed 131 -t 8
+
+Benchmark: 60 paired trials, range 2^30, herd 96, threads 8
+Each trial solves the SAME random key with both arms, from the same seed.
+
+    5/60   folded 2-charge    1.1319*sqrt(w)   folded 3-charge    1.7625*sqrt(w)   speedup 0.6422      10/60   folded 2-charge    1.1265*sqrt(w)   folded 3-charge    1.3958*sqrt(w)   speedup 0.8071      15/60   folded 2-charge    1.0731*sqrt(w)   folded 3-charge    1.5595*sqrt(w)   speedup 0.6881      20/60   folded 2-charge    1.2483*sqrt(w)   folded 3-charge    1.5148*sqrt(w)   speedup 0.8241      25/60   folded 2-charge    1.3434*sqrt(w)   folded 3-charge    1.4972*sqrt(w)   speedup 0.8973      30/60   folded 2-charge    1.3305*sqrt(w)   folded 3-charge    1.6170*sqrt(w)   speedup 0.8229      35/60   folded 2-charge    1.4122*sqrt(w)   folded 3-charge    1.6556*sqrt(w)   speedup 0.8530      40/60   folded 2-charge    1.3888*sqrt(w)   folded 3-charge    1.6525*sqrt(w)   speedup 0.8404      45/60   folded 2-charge    1.3843*sqrt(w)   folded 3-charge    1.5979*sqrt(w)   speedup 0.8663      50/60   folded 2-charge    1.3411*sqrt(w)   folded 3-charge    1.6311*sqrt(w)   speedup 0.8222      55/60   folded 2-charge    1.3746*sqrt(w)   folded 3-charge    1.5865*sqrt(w)   speedup 0.8665      60/60   folded 2-charge    1.3558*sqrt(w)   folded 3-charge    1.5850*sqrt(w)   speedup 0.8554   
+
+  folded 2-charge     1.3558 +/- 0.0964 sqrt(w)   merges/solve 14.53   cycles/solve 4.82   n=60
+  folded 3-charge     1.5850 +/- 0.1140 sqrt(w)   merges/solve 17.72   cycles/solve 5.68   n=60
+
+  solving collision by charge pair:
+    folded 2-charge     tame/wild 0.483   tame/refl 0.383   wild/refl 0.133
+    folded 3-charge     tame/wild 0.367   tame/refl 0.400   wild/refl 0.233
+
+  walk plus reseed point operations (pool build excluded):
+    folded 2-charge     1.3767 sqrt(w)
+    folded 3-charge     1.6053 sqrt(w)
+    speedup on walk+reseed ops = 0.8576
+  verification failures: 0 (must be 0)
+
+  speedup = 0.8554 +/- 0.0865      predicted ceiling 1.1547
+[run 9 exit=0 elapsed=13s]
