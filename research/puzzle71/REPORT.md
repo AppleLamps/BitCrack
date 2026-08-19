@@ -1,5 +1,11 @@
 # Puzzle 71: a 1% window
 
+The range-position of every published solved key is tabulated in
+[POSITIONS.md](POSITIONS.md). Short version: **83 solved keys
+average 50.40% of the way through their interval** (median 50.00%),
+with no drift in `n` and no lag-1 correlation. That is the empirical
+justification for the midpoint window below.
+
 Puzzle 71 is the lowest unsolved address-only Bitcoin puzzle.
 The private key sits in `[2^70, 2^71)` and the public key is not
 on chain, so kangaroo / BSGS do not apply. The interval is
