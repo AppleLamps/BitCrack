@@ -187,11 +187,18 @@ static const int MAX_CYCLE_HISTORY = 8;
 struct Walker {
     ecpoint  pos;
     uint256  off;      // c + d, reduced mod n
+    uint256  disp;     // displacement since seeding, reduced mod n
     int      charge;
     int      forceIdx;   // >= 0: cycle escape jump scheduled for the next step
     int      histLen;    // orbit hashes currently held
     uint64_t hist[MAX_CYCLE_HISTORY];
 };
+
+static uint256 centeredMagnitude(const uint256 &d)
+{
+    uint256 other = N.sub(d);
+    return d.cmp(other) <= 0 ? d : other;
+}
 
 bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
 {
@@ -214,7 +221,11 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
 
     // Folding already produces both signs of the wild charge, so a reflected
     // seed class would only duplicate what the fold does for free.
-    const bool fold = cfg.fold;
+    const bool fold = cfg.fold || cfg.gs;
+    const bool gs = cfg.gs;
+    if(gs && (cfg.gsWildShift < 0 || cfg.gsWildShift > 255)) {
+        throw std::string("GS wild shift must be between 0 and 255");
+    }
     int cycleHistory = cfg.cycleHistory;
     if(cycleHistory < 2) cycleHistory = 2;
     if(cycleHistory > MAX_CYCLE_HISTORY) cycleHistory = MAX_CYCLE_HISTORY;
@@ -224,6 +235,13 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
     const uint256 w = b.sub(a).add((unsigned int)1);   // interval width
     const int rangeBits = bitLength(w);
     st.rangeBits = rangeBits;
+    uint256 wildWidth = w;
+    if(gs) {
+        for(int i = 0; i < cfg.gsWildShift; i++) wildWidth = wildWidth.div(2);
+        if(wildWidth.isZero()) {
+            throw std::string("GS wild shift leaves an empty seed window");
+        }
+    }
 
     // Mean jump ~ 2^strideBits.  Cost is flat in the stride over a wide band,
     // so sqrt(w) is a safe default.
@@ -291,12 +309,26 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
     int poolSize = cfg.poolSize > 0 ? cfg.poolSize : (cfg.herdSize * 8 < 512 ? 512 : cfg.herdSize * 8);
     std::vector<uint256> poolU(poolSize);
     std::vector<ecpoint> poolP(poolSize);
+    std::vector<uint256> wildPoolU;
+    std::vector<ecpoint> wildPoolP;
     for(int i = 0; i < poolSize; i++) {
         poolU[i] = randomBelow(rng, w);
         poolP[i] = g_gtable.mul(poolU[i]);
     }
+    if(gs) {
+        wildPoolU.resize(poolSize);
+        wildPoolP.resize(poolSize);
+        for(int i = 0; i < poolSize; i++) {
+            wildPoolU[i] = randomBelow(rng, wildWidth);
+            wildPoolP[i] = g_gtable.mul(wildPoolU[i]);
+        }
+    }
     // A double-and-add over a k bit scalar costs about 1.5k point operations.
     st.poolOps  = (uint64_t)poolSize * (uint64_t)(rangeBits / 4 + 1);
+    if(gs) {
+        st.poolOps += (uint64_t)poolSize *
+                      (uint64_t)(bitLength(wildWidth) / 4 + 1);
+    }
     st.setupOps = st.poolOps;
     st.poolSize = (uint64_t)poolSize;
 
@@ -315,11 +347,15 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         cfg.spreadRefl < 1 ? 1 : cfg.spreadRefl
     };
     uint256 classBase[3];
+    uint256 classWidth[3];
     ecpoint classAnchor[3];
     for(int c = 0; c < 3; c++) {
+        const uint256 seedWidth = gs && c != 0 ? wildWidth : w;
+        const uint256 seedHalf  = seedWidth.div(2);
+        classWidth[c] = seedWidth.mul((uint32_t)classDraws[c]);
         if(fold) {
             uint256 shift((uint64_t)0);
-            for(int d = 0; d < classDraws[c]; d++) shift = subModN(shift, half);
+            for(int d = 0; d < classDraws[c]; d++) shift = subModN(shift, seedHalf);
             classBase[c]   = shift;
             ecpoint shiftP = g_gtable.mul(shift);
             classAnchor[c] = c == 0 ? shiftP
@@ -348,19 +384,39 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         int     draws  = classDraws[c];
         uint256 base   = classBase[c];
         ecpoint anchor = classAnchor[c];
+        const std::vector<uint256> &seedU = gs && c != 0 ? wildPoolU : poolU;
+        const std::vector<ecpoint> &seedP = gs && c != 0 ? wildPoolP : poolP;
 
         uint256 off = base;
         ecpoint pos = anchor;
         for(int d = 0; d < draws; d++) {
             int i = (int)(rng() % (uint64_t)poolSize);
-            off = addModN(off, poolU[i]);
-            pos = addPoints(pos, poolP[i]);
+            off = addModN(off, seedU[i]);
+            pos = addPoints(pos, seedP[i]);
         }
         st.setupOps += (uint64_t)draws;
         k.off      = off;
+        k.disp     = uint256((uint64_t)0);
         k.pos      = pos;
         k.forceIdx = -1;
         k.histLen  = 0;
+    };
+
+    /*
+     * Move a walker onto the even-y representative of its orbit, carrying the
+     * bookkeeping with it.  Every point that can reach the table has to pass
+     * through here: the table is keyed on x, so an odd-y entry and an even-y
+     * entry with the same x read as a collision whose exponents differ by a
+     * sign, which recovers a wrong key.
+     */
+    auto canonicalise = [&](Walker &k) {
+        if(k.pos.y.v[0] & 1) {
+            k.pos    = ecpoint(k.pos.x, negModP(k.pos.y));
+            k.charge = -k.charge;
+            k.off    = negModN(k.off);
+            k.disp   = negModN(k.disp);
+            st.foldNegations++;
+        }
     };
 
     // Build the charge pattern.  Interleaving rather than blocking keeps class
@@ -417,6 +473,7 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         for(int j = 0; j < cfg.herdSize; j++) {
             herd[j].pos = points[j];
             herd[j].off = addModN(herd[j].off, jumpDist[idx[j]]);
+            herd[j].disp = addModN(herd[j].disp, jumpDist[idx[j]]);
         }
         st.steps += (uint64_t)cfg.herdSize;
 
@@ -431,11 +488,17 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
                  * representative that other walkers will store, or the two
                  * readings differ by a sign and the collision is lost.
                  */
-                if(k.pos.y.v[0] & 1) {
-                    k.pos    = ecpoint(k.pos.x, negModP(k.pos.y));
-                    k.charge = -k.charge;
-                    k.off    = negModN(k.off);
-                    st.foldNegations++;
+                canonicalise(k);
+
+                if(gs) {
+                    int c = k.charge == CHARGE_TAME ? 0 :
+                            (k.charge == CHARGE_WILD ? 1 : 2);
+                    if(centeredMagnitude(k.disp).cmp(classWidth[c]) > 0) {
+                        st.gsRestarts++;
+                        seedWalker(k, k.charge);
+                        canonicalise(k);
+                        continue;
+                    }
                 }
 
                 uint64_t h = orbitHash(k.pos);

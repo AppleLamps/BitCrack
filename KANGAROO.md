@@ -79,13 +79,15 @@ kangaroo -k <pubkey> [--range a:b | --bits N] [options]
       --stride-bits <N>  log2 of the mean jump (default auto, log2 sqrt(w))
       --jumps <N>        jump table size, power of two (default 32, 1024 when folding)
       --fold             walk the negation orbits {P,-P} (see Folded orbits)
+      --gs               folded Gaudry-Schost geometry with narrowed wild sets
+      --gs-wild-shift <s> wild width is w >> s (default 2)
       --cycle-hist <N>   orbit digests kept per walker for cycle detection (default 6)
       --mix <T:W:R>      herd composition by charge (default 1:1:1)
       --pool <N>         reseed pool size (default auto, 8x herd)
       --spread <TWR>     seed spread in pool draws per class (default 211)
       --seed <N>         PRNG seed, for reproducible runs
       --benchmark <N>    N random solves per arm, A/B two mechanisms
-      --arms <A:B>       mechanisms to A/B, each of 2, 3, fold, fold3 (default 2:3)
+      --arms <A:B>       mechanisms to A/B, each of 2, 3, fold, fold3, gs (default 2:3)
   -o, --out <file>       append the found key to a file
 ```
 
@@ -101,6 +103,18 @@ FOUND  private key : 000000000000000000000000000000000000000000000000000000E9AE4
 
   stats   steps=1,299,584   1.7527*sqrt(w)   dp=163184  merges=1  table=163182  4.2s
 ```
+
+### Gaudry-Schost geometry
+
+The opt-in `--gs` mode implies `--fold`, narrows wild/reflected seed windows
+to `w >> s` with `--gs-wild-shift s`, and restarts a walk when its centred
+displacement leaves its class window. Use `--arms fold:gs` to compare the
+geometry in the benchmark harness; the default walk is unchanged.
+
+It is kept as an experiment, not a recommendation: in paired benchmarks it is
+inside the noise of plain `--fold` at every setting where restarts do not fire, and
+worse than `--fold` at settings where they do. `research/REPORT.md` has the
+measurements and the reason.
 
 ## Reproducing the A/B result
 
