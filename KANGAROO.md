@@ -104,6 +104,13 @@ FOUND  private key : 000000000000000000000000000000000000000000000000000000E9AE4
   stats   steps=1,299,584   1.7527*sqrt(w)   dp=163184  merges=1  table=163182  4.2s
 ```
 
+### Gaudry-Schost geometry
+
+The opt-in `--gs` mode implies `--fold`, narrows wild/reflected seed windows
+to `w >> s` with `--gs-wild-shift s`, and restarts a walk when its centred
+displacement leaves its class window. Use `--arms fold:gs` to compare the
+geometry in the benchmark harness; the default walk is unchanged.
+
 ## Reproducing the A/B result
 
 `--benchmark N` generates `N` random keys and solves each one **twice**, once with the
