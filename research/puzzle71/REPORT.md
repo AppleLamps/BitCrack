@@ -1,10 +1,14 @@
 # Puzzle 71: a 1% window
 
 The range-position of every published solved key is tabulated in
-[POSITIONS.md](POSITIONS.md). Short version: **83 solved keys
-average 50.40% of the way through their interval** (median 50.00%),
-with no drift in `n` and no lag-1 correlation. That is the empirical
-justification for the midpoint window below.
+[POSITIONS.md](POSITIONS.md). A second pass that looks only at
+**where** the keys sat (the top bits of each mantissa, n ≥ 32, scan
+statistics on the 82% and 65% piles) is in
+[REANALYSIS.md](REANALYSIS.md). Short version: **83 solved keys
+average 50.40% of the way through their interval** (median 50.00%;
+n ≥ 32 mean 50.41%). The two visible piles are typical of Uniform
+samples (Monte Carlo p = 0.47 that some 1% window holds four keys).
+That is the empirical justification for the midpoint window below.
 
 Puzzle 71 is the lowest unsolved address-only Bitcoin puzzle.
 The private key sits in `[2^70, 2^71)` and the public key is not
