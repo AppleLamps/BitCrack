@@ -28,8 +28,10 @@ static void usage()
     printf("      --bits <N>         Shorthand for the range [2^(N-1), 2^N - 1]\n");
     printf("      --charges <2|3>    2 = classic tame/wild herd, 3 = charge balanced (default 3)\n");
     printf("      --fold             Walk the orbits {P,-P}: ~sqrt(2) fewer steps, needs cycle escapes\n");
+    printf("      --gs               Folded Gaudry-Schost geometry with narrowed wild sets\n");
+    printf("      --gs-wild-shift <s> Wild width is w >> s (default 2)\n");
     printf("      --cycle-hist <N>   Orbit hashes kept per walker for cycle detection (default 6)\n");
-    printf("      --arms <A:B>       Benchmark arms, each of 2|3|fold|fold3 (default 2:3)\n");
+    printf("      --arms <A:B>       Benchmark arms, each of 2|3|fold|fold3|gs (default 2:3)\n");
     printf("      --herd <N>         Walkers in the herd (default 96)\n");
     printf("      --pool <N>         Reseed pool size (default auto, 8x herd)\n");
     printf("      --spread <TWR>     Seed spread in pool draws per class (default 211)\n");
@@ -72,15 +74,17 @@ struct ArmSpec {
     std::string name;
     int         charges;
     bool        fold;
+    bool        gs;
 };
 
-// "2", "3", "fold" (folded 2-charge herd) or "fold3" (folded 3-charge herd).
+// "2", "3", "fold", "fold3" or "gs" (folded Gaudry-Schost herd).
 static bool parseArm(const std::string &s, ArmSpec &out)
 {
-    if(s == "2")          { out.name = "2-charge {0,+1}   "; out.charges = 2; out.fold = false; }
-    else if(s == "3")     { out.name = "3-charge {0,+1,-1}"; out.charges = 3; out.fold = false; }
-    else if(s == "fold")  { out.name = "folded 2-charge   "; out.charges = 2; out.fold = true;  }
-    else if(s == "fold3") { out.name = "folded 3-charge   "; out.charges = 3; out.fold = true;  }
+    if(s == "2")          { out.name = "2-charge {0,+1}   "; out.charges = 2; out.fold = false; out.gs = false; }
+    else if(s == "3")     { out.name = "3-charge {0,+1,-1}"; out.charges = 3; out.fold = false; out.gs = false; }
+    else if(s == "fold")  { out.name = "folded 2-charge   "; out.charges = 2; out.fold = true;  out.gs = false; }
+    else if(s == "fold3") { out.name = "folded 3-charge   "; out.charges = 3; out.fold = true;  out.gs = false; }
+    else if(s == "gs")    { out.name = "GS 2-charge       "; out.charges = 2; out.fold = true;  out.gs = true;  }
     else return false;
     return true;
 }
@@ -113,6 +117,7 @@ static int runBenchmark(kangaroo::Config cfg, int trials, const ArmSpec arms[2])
     double merges[2] = { 0.0, 0.0 };
     double ptw[2] = {0,0}, ptr[2] = {0,0}, pwr[2] = {0,0};
     double cycles[2] = { 0.0, 0.0 };
+    double restarts[2] = { 0.0, 0.0 };
     // Folding reseeds far more often, so the honest metric is walk steps plus
     // the reseed point operations.  One-off pool construction is excluded: both
     // arms pay it, and it is amortised away on any range worth solving.
@@ -147,7 +152,8 @@ static int runBenchmark(kangaroo::Config cfg, int trials, const ArmSpec arms[2])
         for(int arm = 0; arm < 2; arm++) {
             kangaroo::Config ac = c;
             ac.chargeClasses = arms[arm].charges;
-            ac.fold          = arms[arm].fold;
+            ac.fold          = arms[arm].fold || arms[arm].gs;
+            ac.gs            = arms[arm].gs;
             secp256k1::uint256 key;
             kangaroo::Stats st;
             if(kangaroo::solve(ac, key, st) && key == x) {
@@ -158,6 +164,7 @@ static int runBenchmark(kangaroo::Config cfg, int trials, const ArmSpec arms[2])
                 ptr[arm] += (double)st.pairTameRefl;
                 pwr[arm] += (double)st.pairWildRefl;
                 cycles[arm] += (double)st.cycleEvents;
+                restarts[arm] += (double)st.gsRestarts;
                 total[arm]   += (double)st.walkOps();
                 vfail    += st.verifyFailures;
                 ok[arm]++;
@@ -181,9 +188,9 @@ static int runBenchmark(kangaroo::Config cfg, int trials, const ArmSpec arms[2])
         double mean = sum[arm] / ok[arm];
         double var  = sum2[arm] / ok[arm] - mean * mean;
         double se   = sqrt(var / ok[arm]);
-        printf("  %s  %.4f +/- %.4f sqrt(w)   merges/solve %.2f   cycles/solve %.2f   n=%d\n",
+        printf("  %s  %.4f +/- %.4f sqrt(w)   merges/solve %.2f   cycles/solve %.2f   restarts/solve %.2f   n=%d\n",
                names[arm], mean / sqrtW, se / sqrtW, merges[arm] / ok[arm],
-               cycles[arm] / ok[arm], ok[arm]);
+               cycles[arm] / ok[arm], restarts[arm] / ok[arm], ok[arm]);
     }
     printf("\n  solving collision by charge pair:\n");
     for(int arm = 0; arm < 2; arm++) {
@@ -232,6 +239,8 @@ int main(int argc, char **argv)
     parser.add("",   "--bits", true);
     parser.add("",   "--charges", true);
     parser.add("",   "--fold", false);
+    parser.add("",   "--gs", false);
+    parser.add("",   "--gs-wild-shift", true);
     parser.add("",   "--cycle-hist", true);
     parser.add("",   "--arms", true);
     parser.add("",   "--herd", true);
@@ -278,13 +287,15 @@ int main(int argc, char **argv)
             }
             else if(a.equals("", "--charges"))     cfg.chargeClasses = (int)util::parseUInt32(a.arg);
             else if(a.equals("", "--fold"))         cfg.fold          = true;
+            else if(a.equals("", "--gs"))           { cfg.gs = true; cfg.fold = true; }
+            else if(a.equals("", "--gs-wild-shift")) cfg.gsWildShift  = (int)util::parseUInt32(a.arg);
             else if(a.equals("", "--cycle-hist"))   cfg.cycleHistory  = (int)util::parseUInt32(a.arg);
             else if(a.equals("", "--arms")) {
                 std::string v = a.arg;
                 size_t c = v.find(':');
                 if(c == std::string::npos) throw std::string("--arms takes A:B, e.g. 3:fold");
                 if(!parseArm(v.substr(0, c), arms[0]) || !parseArm(v.substr(c + 1), arms[1])) {
-                    throw std::string("--arms entries must be 2, 3, fold or fold3");
+                    throw std::string("--arms entries must be 2, 3, fold, fold3 or gs");
                 }
             }
             else if(a.equals("", "--herd"))        cfg.herdSize      = (int)util::parseUInt32(a.arg);
@@ -330,7 +341,9 @@ int main(int argc, char **argv)
      * per step, so the 32 entry table that suits an unfolded herd spends more on
      * escapes than folding saves.  Raise it unless the caller asked for a size.
      */
-    bool anyFold = cfg.fold || (benchmark > 0 && (arms[0].fold || arms[1].fold));
+    bool anyFold = cfg.fold || cfg.gs || (benchmark > 0 &&
+                                           (arms[0].fold || arms[0].gs ||
+                                            arms[1].fold || arms[1].gs));
     if(anyFold && !haveJumps && cfg.jumpCount < 1024) {
         cfg.jumpCount = 1024;
         printf("Folded walk: raising the jump table to %d entries (cycle rate ~1/2J)\n",
@@ -390,10 +403,11 @@ int main(int argc, char **argv)
 
     printf("FOUND  private key : %s\n\n", key.toString().c_str());
     printStats("stats", st, sqrtW);
-    if(cfg.fold) {
-        printf("  folds=%llu  cycles escaped=%llu\n",
+    if(cfg.fold || cfg.gs) {
+        printf("  folds=%llu  cycles escaped=%llu  gs restarts=%llu\n",
                (unsigned long long)st.foldNegations,
-               (unsigned long long)st.cycleEvents);
+               (unsigned long long)st.cycleEvents,
+               (unsigned long long)st.gsRestarts);
     }
 
     if(!outFile.empty()) {

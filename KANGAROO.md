@@ -79,13 +79,15 @@ kangaroo -k <pubkey> [--range a:b | --bits N] [options]
       --stride-bits <N>  log2 of the mean jump (default auto, log2 sqrt(w))
       --jumps <N>        jump table size, power of two (default 32, 1024 when folding)
       --fold             walk the negation orbits {P,-P} (see Folded orbits)
+      --gs               folded Gaudry-Schost geometry with narrowed wild sets
+      --gs-wild-shift <s> wild width is w >> s (default 2)
       --cycle-hist <N>   orbit digests kept per walker for cycle detection (default 6)
       --mix <T:W:R>      herd composition by charge (default 1:1:1)
       --pool <N>         reseed pool size (default auto, 8x herd)
       --spread <TWR>     seed spread in pool draws per class (default 211)
       --seed <N>         PRNG seed, for reproducible runs
       --benchmark <N>    N random solves per arm, A/B two mechanisms
-      --arms <A:B>       mechanisms to A/B, each of 2, 3, fold, fold3 (default 2:3)
+      --arms <A:B>       mechanisms to A/B, each of 2, 3, fold, fold3, gs (default 2:3)
   -o, --out <file>       append the found key to a file
 ```
 

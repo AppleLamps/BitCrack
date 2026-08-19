@@ -70,6 +70,12 @@ struct Config {
      */
     bool     fold          = false;
     /*
+     * Gaudry-Schost geometry: fold the orbit and narrow the wild/reflected
+     * seed windows.  This is opt-in and implies fold in the solver.
+     */
+    bool     gs            = false;
+    int      gsWildShift   = 2;       // wild width = w >> gsWildShift
+    /*
      * Orbit hashes remembered per walker for fruitless cycle detection.  Two
      * entries already catch the dominant 2-cycle; longer windows catch longer
      * loops for a few bytes and one comparison per step each.
@@ -117,6 +123,7 @@ struct Stats {
     uint64_t verifyFailures        = 0;   // must stay 0
     uint64_t foldNegations         = 0;   // points replaced by their negative
     uint64_t cycleEvents           = 0;   // fruitless cycles detected and escaped
+    uint64_t gsRestarts            = 0;   // walks restarted after leaving their set
     uint64_t tableSize             = 0;
     double   seconds               = 0.0;
     int      dpBits                = 0;
