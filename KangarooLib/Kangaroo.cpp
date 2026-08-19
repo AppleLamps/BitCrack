@@ -139,6 +139,20 @@ static inline bool isDistinguished(const ecpoint &p, uint32_t dpMask)
     return (p.x.v[0] & dpMask) == 0;
 }
 
+/*
+ * Identifier of the orbit {P,-P}, used only to recognise a repeat.  x already
+ * identifies the orbit, so this is just a 64 bit digest of it; unlike the jump
+ * index it may share bits with anything.
+ */
+static inline uint64_t orbitHash(const ecpoint &p)
+{
+    uint64_t h = 0;
+    for(int i = 0; i < 8; i += 2) {
+        h ^= mix64(((uint64_t)p.x.v[i + 1] << 32) | (uint64_t)p.x.v[i]);
+    }
+    return h;
+}
+
 struct XKey {
     unsigned int v[8];
 
@@ -167,10 +181,16 @@ struct TableEntry {
     int     charge;
 };
 
+// Cycle history is a fixed size ring so a walker stays flat and cheap to touch.
+static const int MAX_CYCLE_HISTORY = 8;
+
 struct Walker {
-    ecpoint pos;
-    uint256 off;      // c + d, reduced mod n
-    int     charge;
+    ecpoint  pos;
+    uint256  off;      // c + d, reduced mod n
+    int      charge;
+    int      forceIdx;   // >= 0: cycle escape jump scheduled for the next step
+    int      histLen;    // orbit hashes currently held
+    uint64_t hist[MAX_CYCLE_HISTORY];
 };
 
 bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
@@ -191,6 +211,13 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
     if(cfg.chargeClasses != 2 && cfg.chargeClasses != 3) {
         throw std::string("charge classes must be 2 or 3");
     }
+
+    // Folding already produces both signs of the wild charge, so a reflected
+    // seed class would only duplicate what the fold does for free.
+    const bool fold = cfg.fold;
+    int cycleHistory = cfg.cycleHistory;
+    if(cycleHistory < 2) cycleHistory = 2;
+    if(cycleHistory > MAX_CYCLE_HISTORY) cycleHistory = MAX_CYCLE_HISTORY;
 
     const uint256 a = cfg.rangeStart;
     const uint256 b = cfg.rangeEnd;
@@ -232,11 +259,27 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         jumpPoint[i] = g_gtable.mul(d);
     }
 
-    const ecpoint H    = cfg.target;
-    const ecpoint negH = ecpoint(H.x, negModP(H.y));
+    const ecpoint H = cfg.target;
+
+    /*
+     * Folding needs the interval centred on zero.  Negation acts on exponents as
+     * e -> -e, so it folds the walk onto half as many orbits only if the set the
+     * walk occupies is symmetric about zero; on the raw interval [a,b] it maps
+     * the window somewhere near n instead and buys nothing.  Solve the shifted
+     * instance H' = H - mid*G, whose logarithm x' = x - mid lies in
+     * [-w/2, w/2], and add mid back at the end.
+     */
+    const uint256 half = w.div(2);
+    const uint256 mid  = a.add(half);
+    const ecpoint Heff = fold ? addPoints(H, ecpoint(g_gtable.mul(mid).x,
+                                                     negModP(g_gtable.mul(mid).y)))
+                              : H;
+    const ecpoint negHeff = ecpoint(Heff.x, negModP(Heff.y));
+    if(fold) st.setupOps += 128;
 
     // Reflection constant: a charge -1 walker sits at (2a + w - 1) - x + u,
-    // which lands in the same window as the tame and wild walkers.
+    // which lands in the same window as the tame and wild walkers.  Folded runs
+    // are already centred, so there the reflected class is just -x' + u.
     const uint256 reflectBase = a.add(a).add(w).sub(uint256((uint64_t)1));
 
     /*
@@ -253,12 +296,46 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         poolP[i] = g_gtable.mul(poolU[i]);
     }
     // A double-and-add over a k bit scalar costs about 1.5k point operations.
-    st.setupOps = (uint64_t)poolSize * (uint64_t)(rangeBits / 4 + 1);
+    st.poolOps  = (uint64_t)poolSize * (uint64_t)(rangeBits / 4 + 1);
+    st.setupOps = st.poolOps;
     st.poolSize = (uint64_t)poolSize;
 
     const ecpoint baseG        = g_gtable.mul(a);
-    const ecpoint reflectAnchor = addPoints(negH, g_gtable.mul(reflectBase));
+    const ecpoint reflectAnchor = addPoints(negHeff, g_gtable.mul(reflectBase));
     st.setupOps += 128;
+
+    /*
+     * Per class seed anchor.  Each class draws `draws` offsets from the pool,
+     * each uniform on [0,w), so a centred class needs its window pulled back by
+     * draws*w/2; the shift is folded into the anchor point once at setup.
+     */
+    const int classDraws[3] = {
+        cfg.spreadTame < 1 ? 1 : cfg.spreadTame,
+        cfg.spreadWild < 1 ? 1 : cfg.spreadWild,
+        cfg.spreadRefl < 1 ? 1 : cfg.spreadRefl
+    };
+    uint256 classBase[3];
+    ecpoint classAnchor[3];
+    for(int c = 0; c < 3; c++) {
+        if(fold) {
+            uint256 shift((uint64_t)0);
+            for(int d = 0; d < classDraws[c]; d++) shift = subModN(shift, half);
+            classBase[c]   = shift;
+            ecpoint shiftP = g_gtable.mul(shift);
+            classAnchor[c] = c == 0 ? shiftP
+                           : addPoints(c == 1 ? Heff : negHeff, shiftP);
+            st.setupOps += 64;
+        } else if(c == 0) {
+            classBase[c]   = a;
+            classAnchor[c] = baseG;
+        } else if(c == 1) {
+            classBase[c]   = uint256((uint64_t)0);
+            classAnchor[c] = Heff;
+        } else {
+            classBase[c]   = reflectBase;
+            classAnchor[c] = reflectAnchor;
+        }
+    }
 
     // Seeding.  Tame offsets are a sum of two uniforms, which spreads the only
     // class whose position we control across the window the wild classes reach.
@@ -267,13 +344,10 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
     auto seedWalker = [&](Walker &k, int charge) {
         k.charge = charge;
 
-        int draws;
-        uint256 base;
-        ecpoint anchor;
-        if(charge == CHARGE_TAME)      { draws = cfg.spreadTame; base = a;           anchor = baseG; }
-        else if(charge == CHARGE_WILD) { draws = cfg.spreadWild; base = uint256((uint64_t)0); anchor = H; }
-        else                           { draws = cfg.spreadRefl; base = reflectBase; anchor = reflectAnchor; }
-        if(draws < 1) draws = 1;
+        int c = charge == CHARGE_TAME ? 0 : (charge == CHARGE_WILD ? 1 : 2);
+        int     draws  = classDraws[c];
+        uint256 base   = classBase[c];
+        ecpoint anchor = classAnchor[c];
 
         uint256 off = base;
         ecpoint pos = anchor;
@@ -283,8 +357,10 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
             pos = addPoints(pos, poolP[i]);
         }
         st.setupOps += (uint64_t)draws;
-        k.off = off;
-        k.pos = pos;
+        k.off      = off;
+        k.pos      = pos;
+        k.forceIdx = -1;
+        k.histLen  = 0;
     };
 
     // Build the charge pattern.  Interleaving rather than blocking keeps class
@@ -327,7 +403,10 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         }
 
         for(int j = 0; j < cfg.herdSize; j++) {
-            idx[j]     = jumpIndex(herd[j].pos, cfg.jumpCount - 1);
+            // The jump index reads x only, so mirrored walkers agree on it.
+            idx[j] = herd[j].forceIdx >= 0 ? herd[j].forceIdx
+                                           : jumpIndex(herd[j].pos, cfg.jumpCount - 1);
+            herd[j].forceIdx = -1;
             points[j]  = herd[j].pos;
             addends[j] = jumpPoint[idx[j]];
         }
@@ -340,6 +419,64 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
             herd[j].off = addModN(herd[j].off, jumpDist[idx[j]]);
         }
         st.steps += (uint64_t)cfg.herdSize;
+
+        if(fold) {
+            for(int j = 0; j < cfg.herdSize; j++) {
+                Walker &k = herd[j];
+
+                /*
+                 * Canonicalise before the distinguished point test, not after
+                 * the jump index: x already identifies the orbit, but the
+                 * exponent stored in the table has to belong to the same
+                 * representative that other walkers will store, or the two
+                 * readings differ by a sign and the collision is lost.
+                 */
+                if(k.pos.y.v[0] & 1) {
+                    k.pos    = ecpoint(k.pos.x, negModP(k.pos.y));
+                    k.charge = -k.charge;
+                    k.off    = negModN(k.off);
+                    st.foldNegations++;
+                }
+
+                uint64_t h = orbitHash(k.pos);
+
+                // A jump distance is never zero, so a repeated orbit means the
+                // canonical choice sent the walker back: a fruitless cycle.
+                bool cycle = false;
+                for(int i = 0; i < k.histLen; i++) {
+                    if(k.hist[i] == h) { cycle = true; break; }
+                }
+
+                if(cycle) {
+                    st.cycleEvents++;
+                    /*
+                     * Escape on a jump derived from the smallest orbit hash in
+                     * the cycle.  That representative is a property of the cycle
+                     * and not of the walker, so two walkers caught in the same
+                     * cycle leave it in the same direction and stay merged,
+                     * which is the whole point of folding.
+                     */
+                    uint64_t anchor = h;
+                    for(int i = 0; i < k.histLen; i++) {
+                        if(k.hist[i] < anchor) anchor = k.hist[i];
+                    }
+                    int esc = (int)(mix64(anchor ^ 0x2545F4914F6CDD1DULL)
+                                    & (uint64_t)(cfg.jumpCount - 1));
+                    // The escape must differ from the jump the walk would take
+                    // anyway, or the cycle repeats for ever.
+                    if(esc == jumpIndex(k.pos, cfg.jumpCount - 1)) {
+                        esc = (esc + 1) & (cfg.jumpCount - 1);
+                    }
+                    k.forceIdx = esc;
+                    k.histLen  = 0;
+                } else if(k.histLen < cycleHistory) {
+                    k.hist[k.histLen++] = h;
+                } else {
+                    for(int i = 1; i < cycleHistory; i++) k.hist[i - 1] = k.hist[i];
+                    k.hist[cycleHistory - 1] = h;
+                }
+            }
+        }
 
         for(int j = 0; j < cfg.herdSize && !found; j++) {
             if(!isDistinguished(herd[j].pos, dpMask)) {
@@ -380,8 +517,14 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
                 st.pairWildRefl++;
             }
 
-            if(g_gtable.mul(x) == H) {
-                recovered = x;
+            if(g_gtable.mul(x) == Heff) {
+                // Undo the centring shift, then check the answer against the
+                // public key the caller actually asked about.
+                uint256 cand = fold ? addModN(x, mid) : x;
+                if(fold && !(g_gtable.mul(cand) == H)) {
+                    throw std::string("internal error: shifted solution does not match the target");
+                }
+                recovered = cand;
                 found = true;
             } else {
                 st.verifyFailures++;

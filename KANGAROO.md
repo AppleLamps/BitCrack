@@ -77,12 +77,15 @@ kangaroo -k <pubkey> [--range a:b | --bits N] [options]
   -t, --threads <N>      worker threads for the batch point add
   -d, --dp-bits <N>      distinguished point bits (default auto)
       --stride-bits <N>  log2 of the mean jump (default auto, log2 sqrt(w))
-      --jumps <N>        jump table size, power of two (default 32)
+      --jumps <N>        jump table size, power of two (default 32, 1024 when folding)
+      --fold             walk the negation orbits {P,-P} (see Folded orbits)
+      --cycle-hist <N>   orbit digests kept per walker for cycle detection (default 6)
       --mix <T:W:R>      herd composition by charge (default 1:1:1)
       --pool <N>         reseed pool size (default auto, 8x herd)
       --spread <TWR>     seed spread in pool draws per class (default 211)
       --seed <N>         PRNG seed, for reproducible runs
-      --benchmark <N>    N random solves per arm, A/B the charge sets
+      --benchmark <N>    N random solves per arm, A/B two mechanisms
+      --arms <A:B>       mechanisms to A/B, each of 2, 3, fold, fold3 (default 2:3)
   -o, --out <file>       append the found key to a file
 ```
 
@@ -175,6 +178,66 @@ Both of these recover the key from the public key alone:
 ```
 
 
+## Folded orbits
+
+`--fold` is a second, stronger mechanism. `P` and `-P` share an x coordinate, and the walk
+reads nothing but the x coordinate: both the jump index and the DP test are already blind to
+the sign of `y`. Folding makes the bookkeeping agree with that. Each step canonicalizes the
+walker to the even-`y` representative of its orbit and carries the exponent along the same
+map:
+
+```
+(k, offset) -> (-k, -offset)   whenever the point is negated
+```
+
+The walk then runs on the curve modulo negation, whose domain is half the size, so expected
+cost drops by `sqrt(2)`. The benchmark prints that as `predicted ceiling 1.4142`.
+
+**The interval must be centered first.** `x -> -x` maps `[-m, m]` to itself but maps a
+general `[a, b]` outside itself, so folding a raw range is not a symmetry at all. The solver
+solves a shifted instance with `mid = a + floor(w/2)` and `H_eff = H - mid*G`, then adds `mid`
+back and re-verifies the result against the original target. An earlier version that folded
+`[a, b]` directly was *slower* than the baseline; the shift is the whole difference.
+
+**Folded walks fall into fruitless cycles.** When a step is followed by a canonicalizing
+negation, the next jump can undo it. The per-step probability is about `1/(2J)` for `J` jump
+table entries, matching the measured 4.9 cycles/solve at `2^30, J=4096` (model: 6.0) and
+19.1 at `2^34` (model: 25.9). Each walker keeps a short ring of orbit digests; on a repeat it
+takes an escape jump derived from the *minimum* digest in the ring, which is deterministic, so
+two walkers trapped in the same cycle escape to the same place and their collision survives.
+Without this, folded mode does not finish. Because the cycles are almost entirely 2-cycles,
+history length barely matters: 2 and 8 gave identical step counts at `2^30`.
+
+Since cycle and merge overhead scale with `steps/J`, folded mode raises the jump table to at
+least 1024 entries unless `--jumps` was given explicitly, and prints that it did.
+
+### Measured
+
+Same harness, `--arms 3:fold`, cost in `sqrt(w)` group operations including reseeds, zero
+verification failures throughout:
+
+| range | trials | baseline | folded | speedup |
+|---|---|---|---|---|
+| `2^30`, J=4096 | 200 | 1.9609 +/- 0.0739 (3-charge) | 1.4945 +/- 0.0581 | **1.3121 +/- 0.0710** |
+| `2^30`, J=4096 | 200 | 2.2786 +/- 0.0893 (2-charge) | 1.4465 +/- 0.0537 | **1.5753 +/- 0.0850** |
+| `2^32`, J=4096 | 100 | 1.8949 +/- 0.1064 (3-charge) | 1.5240 +/- 0.0863 | 1.2434 +/- 0.0992 |
+| `2^34`, J=4096 | 60 | 1.9632 +/- 0.1276 (3-charge) | 1.6166 +/- 0.1185 | 1.2144 +/- 0.1189 |
+
+The shortfall against 1.4142 is the escape and merge overhead: folding merges 15.5 times per
+solve versus 2.1 for the baseline, because canonicalization keeps moving walkers between the
+`+1` and `-1` classes. It costs almost nothing in the end, since a respawn is one or two
+point additions: the 2^30 step speedup of 1.3121 becomes 1.3012 with reseeds included.
+Raising `J` buys back part of the rest, from 1.6036 `sqrt(w)` at `J=1024` (18.9 cycles/solve)
+to 1.3424 at `J=16384` (1.6). Per-step throughput is unaffected within noise (3.35M vs 3.40M
+ops/s at `2^48`), so the step win is a wall-clock win.
+
+**Fold two charges, not three.** `--arms fold:fold3` at `2^30` gives 1.3558 against 1.5850
+`sqrt(w)`: once canonicalization is already mapping `+1` to `-1`, a separate reflected class
+only dilutes the herd. Folded mode uses `{0,+1}` and the two mechanisms do not stack.
+
+Derivation, the simulator that ranked this ahead of other candidates, and the ideas that
+failed are in `research/REPORT.md`.
+
 ## Implementation notes
 
 **Jump index and DP test read disjoint bits.** The distinguished point test reads the low
@@ -208,9 +271,12 @@ steps.
 - The field arithmetic is BitCrack's generic `uint256`, not specialised secp256k1 code, so
   raw throughput is well below tuned kangaroo implementations. The A/B ratio is unaffected,
   since both arms share the same arithmetic.
-- The negation map (`P ~ −P`) spends the same symmetry harder and wins where it is
-  available, at `sqrt(2)`, but it introduces fruitless cycles that need detection and escape
-  machinery. The two do not stack: folding collapses charges `+1` and `−1` into one class.
-  The reflected herd is cycle free and works in any group.
+- The negation map is now implemented as `--fold` and measures 1.21x to 1.31x over the
+  charge-balanced herd, against a `sqrt(2)` ceiling. It stays opt-in: it needs the centering
+  shift and the cycle machinery, whereas the reflected herd is cycle free and works in any
+  group, including ones with no cheap negation.
+- Folded gains shrink slowly as the range grows (1.31x at `2^30`, 1.21x at `2^34`) because
+  cycle overhead scales with `steps/J` while `J` is fixed. Scaling `J` and the DP parameters
+  with the range is untuned work.
 - Multi-dimensional (GLV-decomposed) ranges have a much larger symmetry group than `Z/2`,
   so the charge gain there should be strictly larger than what this module measures.

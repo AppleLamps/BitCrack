@@ -31,6 +31,22 @@
  * preserving an interval are the identity and the reflection x -> (a+b)-x, so
  * the usable charge set is {0, +1, -1}.  Balancing the herd across all three
  * raises the productive share of collisions from 1/2 to 2/3.
+ *
+ * Orbit folding (cfg.fold) spends the same reflection symmetry inside the group
+ * instead of inside the herd.  A walker holds the canonical representative of
+ * the orbit {P, -P} (the point with even y), and the jump index and the
+ * distinguished point test already read only x, which is orbit invariant.  Two
+ * walkers that reach the same orbit therefore take the same jump for ever, so
+ * the walk lives on w/2 orbits instead of w points and collisions arrive about
+ * sqrt(2) sooner.  Negating a point negates its exponent, so the bookkeeping is
+ * (k, c+d) -> (-k, -(c+d)): a fold turns a wild walker into a reflected one and
+ * back, which is why folding needs no reflected seeds of its own.
+ *
+ * The price is fruitless cycles: the canonical choice can send a walker back
+ * where it came from and trap it in a short loop.  Cycles are detected from a
+ * per walker history of orbit hashes and escaped with a jump derived from the
+ * cycle's own minimum hash, so all walkers trapped in one cycle escape the same
+ * way and the coalescence that folding depends on survives.
  */
 namespace kangaroo {
 
@@ -47,6 +63,18 @@ struct Config {
 
     int      herdSize      = 96;      // number of walkers
     int      chargeClasses = 3;       // 2 = classic tame/wild, 3 = charge balanced
+    /*
+     * Walk on the orbits {P,-P} rather than on points.  Folding subsumes the
+     * reflected charge class (a fold flips +1 to -1 by itself), so it is meant
+     * to be used with chargeClasses = 2.
+     */
+    bool     fold          = false;
+    /*
+     * Orbit hashes remembered per walker for fruitless cycle detection.  Two
+     * entries already catch the dominant 2-cycle; longer windows catch longer
+     * loops for a few bytes and one comparison per step each.
+     */
+    int      cycleHistory  = 6;
     // Explicit herd composition.  Zeroes mean "derive from chargeClasses".
     // The measured overlap weights are not equal across charge pairs, so the
     // cost optimum sits slightly tame-heavy of the balanced 1:1:1 point.
@@ -76,6 +104,9 @@ struct Config {
 struct Stats {
     uint64_t steps                 = 0;   // walk group operations (the theory metric)
     uint64_t setupOps              = 0;   // seeding and reseeding cost, in point ops
+    // One-off pool construction, part of setupOps.  It is amortised away on any
+    // range worth solving, so mechanism comparisons should exclude it.
+    uint64_t poolOps               = 0;
     uint64_t poolSize              = 0;   // precomputed reseed pool entries
     uint64_t dpHits                = 0;   // distinguished points reached
     uint64_t sameChargeMerges      = 0;   // collisions that cancelled x
@@ -84,6 +115,8 @@ struct Stats {
     uint64_t pairTameRefl          = 0;
     uint64_t pairWildRefl          = 0;
     uint64_t verifyFailures        = 0;   // must stay 0
+    uint64_t foldNegations         = 0;   // points replaced by their negative
+    uint64_t cycleEvents           = 0;   // fruitless cycles detected and escaped
     uint64_t tableSize             = 0;
     double   seconds               = 0.0;
     int      dpBits                = 0;
@@ -91,6 +124,8 @@ struct Stats {
     int      rangeBits             = 0;         // ceil(log2(width))
 
     uint64_t totalOps() const { return steps + setupOps; }
+    // Walk plus the setup that scales with the run: reseeds after merges.
+    uint64_t walkOps() const  { return steps + (setupOps - poolOps); }
 };
 
 // Returns true and sets keyOut when the key is found and verified against the

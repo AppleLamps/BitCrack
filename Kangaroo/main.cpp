@@ -27,6 +27,9 @@ static void usage()
     printf("      --range <a:b>      Hex search interval, inclusive\n");
     printf("      --bits <N>         Shorthand for the range [2^(N-1), 2^N - 1]\n");
     printf("      --charges <2|3>    2 = classic tame/wild herd, 3 = charge balanced (default 3)\n");
+    printf("      --fold             Walk the orbits {P,-P}: ~sqrt(2) fewer steps, needs cycle escapes\n");
+    printf("      --cycle-hist <N>   Orbit hashes kept per walker for cycle detection (default 6)\n");
+    printf("      --arms <A:B>       Benchmark arms, each of 2|3|fold|fold3 (default 2:3)\n");
     printf("      --herd <N>         Walkers in the herd (default 96)\n");
     printf("      --pool <N>         Reseed pool size (default auto, 8x herd)\n");
     printf("      --spread <TWR>     Seed spread in pool draws per class (default 211)\n");
@@ -65,6 +68,23 @@ static double sqrtWidth(const secp256k1::uint256 &w, int rangeBits)
     return ldexp(1.0, rangeBits / 2.0);
 }
 
+struct ArmSpec {
+    std::string name;
+    int         charges;
+    bool        fold;
+};
+
+// "2", "3", "fold" (folded 2-charge herd) or "fold3" (folded 3-charge herd).
+static bool parseArm(const std::string &s, ArmSpec &out)
+{
+    if(s == "2")          { out.name = "2-charge {0,+1}   "; out.charges = 2; out.fold = false; }
+    else if(s == "3")     { out.name = "3-charge {0,+1,-1}"; out.charges = 3; out.fold = false; }
+    else if(s == "fold")  { out.name = "folded 2-charge   "; out.charges = 2; out.fold = true;  }
+    else if(s == "fold3") { out.name = "folded 3-charge   "; out.charges = 3; out.fold = true;  }
+    else return false;
+    return true;
+}
+
 static void printStats(const char *label, const kangaroo::Stats &st, double sqrtW)
 {
     printf("  %-18s steps=%-14s  %.4f*sqrt(w)   dp=%-9llu merges=%-7llu table=%-9llu  %.1fs  %s ops/s\n",
@@ -78,7 +98,7 @@ static void printStats(const char *label, const kangaroo::Stats &st, double sqrt
            util::formatThousands(st.seconds > 0 ? (uint64_t)(st.steps / st.seconds) : 0).c_str());
 }
 
-static int runBenchmark(kangaroo::Config cfg, int trials)
+static int runBenchmark(kangaroo::Config cfg, int trials, const ArmSpec arms[2])
 {
     secp256k1::uint256 w = cfg.rangeEnd.sub(cfg.rangeStart).add((unsigned int)1);
     int rangeBits = kangaroo::bitLength(w);
@@ -86,12 +106,17 @@ static int runBenchmark(kangaroo::Config cfg, int trials)
 
     printf("\nBenchmark: %d paired trials, range 2^%d, herd %d, threads %d\n",
            trials, rangeBits, cfg.herdSize, cfg.threads);
-    printf("Each trial solves the SAME random key with both herds.\n\n");
+    printf("Each trial solves the SAME random key with both arms, from the same seed.\n\n");
 
     double sum[2]  = { 0.0, 0.0 };
     double sum2[2] = { 0.0, 0.0 };
     double merges[2] = { 0.0, 0.0 };
     double ptw[2] = {0,0}, ptr[2] = {0,0}, pwr[2] = {0,0};
+    double cycles[2] = { 0.0, 0.0 };
+    // Folding reseeds far more often, so the honest metric is walk steps plus
+    // the reseed point operations.  One-off pool construction is excluded: both
+    // arms pay it, and it is amortised away on any range worth solving.
+    double total[2] = { 0.0, 0.0 };
     uint64_t vfail = 0;
     int    ok[2]   = { 0, 0 };
     std::mt19937_64 rng(cfg.seed ? cfg.seed : (uint64_t)util::getSystemTime());
@@ -121,7 +146,8 @@ static int runBenchmark(kangaroo::Config cfg, int trials)
 
         for(int arm = 0; arm < 2; arm++) {
             kangaroo::Config ac = c;
-            ac.chargeClasses = (arm == 0) ? 2 : 3;
+            ac.chargeClasses = arms[arm].charges;
+            ac.fold          = arms[arm].fold;
             secp256k1::uint256 key;
             kangaroo::Stats st;
             if(kangaroo::solve(ac, key, st) && key == x) {
@@ -131,6 +157,8 @@ static int runBenchmark(kangaroo::Config cfg, int trials)
                 ptw[arm] += (double)st.pairTameWild;
                 ptr[arm] += (double)st.pairTameRefl;
                 pwr[arm] += (double)st.pairWildRefl;
+                cycles[arm] += (double)st.cycleEvents;
+                total[arm]   += (double)st.walkOps();
                 vfail    += st.verifyFailures;
                 ok[arm]++;
             }
@@ -139,21 +167,23 @@ static int runBenchmark(kangaroo::Config cfg, int trials)
         if((t + 1) % 5 == 0 || t + 1 == trials) {
             double m0 = ok[0] ? sum[0] / ok[0] / sqrtW : 0.0;
             double m1 = ok[1] ? sum[1] / ok[1] / sqrtW : 0.0;
-            printf("\r  %3d/%d   2-charge %.4f*sqrt(w)   3-charge %.4f*sqrt(w)   speedup %.4f   ",
-                   t + 1, trials, m0, m1, m1 > 0 ? m0 / m1 : 0.0);
+            printf("\r  %3d/%d   %s %.4f*sqrt(w)   %s %.4f*sqrt(w)   speedup %.4f   ",
+                   t + 1, trials, arms[0].name.c_str(), m0, arms[1].name.c_str(), m1,
+                   m1 > 0 ? m0 / m1 : 0.0);
             fflush(stdout);
         }
     }
     printf("\n\n");
 
-    const char *names[2] = { "2-charge {0,+1}   ", "3-charge {0,+1,-1}" };
+    const char *names[2] = { arms[0].name.c_str(), arms[1].name.c_str() };
     for(int arm = 0; arm < 2; arm++) {
         if(!ok[arm]) continue;
         double mean = sum[arm] / ok[arm];
         double var  = sum2[arm] / ok[arm] - mean * mean;
         double se   = sqrt(var / ok[arm]);
-        printf("  %s  %.4f +/- %.4f sqrt(w)   merges/solve %.2f   n=%d\n",
-               names[arm], mean / sqrtW, se / sqrtW, merges[arm] / ok[arm], ok[arm]);
+        printf("  %s  %.4f +/- %.4f sqrt(w)   merges/solve %.2f   cycles/solve %.2f   n=%d\n",
+               names[arm], mean / sqrtW, se / sqrtW, merges[arm] / ok[arm],
+               cycles[arm] / ok[arm], ok[arm]);
     }
     printf("\n  solving collision by charge pair:\n");
     for(int arm = 0; arm < 2; arm++) {
@@ -161,14 +191,25 @@ static int runBenchmark(kangaroo::Config cfg, int trials)
         printf("    %s  tame/wild %.3f   tame/refl %.3f   wild/refl %.3f\n",
                names[arm], ptw[arm] / ok[arm], ptr[arm] / ok[arm], pwr[arm] / ok[arm]);
     }
+    printf("\n  walk plus reseed point operations (pool build excluded):\n");
+    for(int arm = 0; arm < 2; arm++) {
+        if(!ok[arm]) continue;
+        printf("    %s  %.4f sqrt(w)\n", names[arm], total[arm] / ok[arm] / sqrtW);
+    }
+    if(ok[0] && ok[1] && total[1] > 0) {
+        printf("    speedup on walk+reseed ops = %.4f\n",
+               (total[0] / ok[0]) / (total[1] / ok[1]));
+    }
     printf("  verification failures: %llu (must be 0)\n", (unsigned long long)vfail);
     if(ok[0] && ok[1]) {
         double m0 = sum[0]/ok[0], m1 = sum[1]/ok[1];
         double se0 = sqrt((sum2[0]/ok[0] - m0*m0)/ok[0]) / m0;
         double se1 = sqrt((sum2[1]/ok[1] - m1*m1)/ok[1]) / m1;
         double r = m0 / m1;
-        printf("\n  speedup = %.4f +/- %.4f      predicted ceiling sqrt(4/3) = %.4f\n",
-               r, r * sqrt(se0*se0 + se1*se1), sqrt(4.0 / 3.0));
+        // Ceilings: charge balancing can reach sqrt(4/3), folding sqrt(2).
+        double ceiling = (!arms[0].fold && arms[1].fold) ? sqrt(2.0) : sqrt(4.0 / 3.0);
+        printf("\n  speedup = %.4f +/- %.4f      predicted ceiling %.4f\n",
+               r, r * sqrt(se0*se0 + se1*se1), ceiling);
     }
     return 0;
 }
@@ -180,12 +221,19 @@ int main(int argc, char **argv)
     std::string outFile;
     int benchmark = 0;
     bool haveRange = false;
+    bool haveJumps = false;
+    ArmSpec arms[2];
+    parseArm("2", arms[0]);
+    parseArm("3", arms[1]);
 
     CmdParse parser;
     parser.add("-k", "--pubkey", true);
     parser.add("",   "--range", true);
     parser.add("",   "--bits", true);
     parser.add("",   "--charges", true);
+    parser.add("",   "--fold", false);
+    parser.add("",   "--cycle-hist", true);
+    parser.add("",   "--arms", true);
     parser.add("",   "--herd", true);
     parser.add("",   "--pool", true);
     parser.add("",   "--spread", true);
@@ -229,6 +277,16 @@ int main(int argc, char **argv)
                 haveRange = true;
             }
             else if(a.equals("", "--charges"))     cfg.chargeClasses = (int)util::parseUInt32(a.arg);
+            else if(a.equals("", "--fold"))         cfg.fold          = true;
+            else if(a.equals("", "--cycle-hist"))   cfg.cycleHistory  = (int)util::parseUInt32(a.arg);
+            else if(a.equals("", "--arms")) {
+                std::string v = a.arg;
+                size_t c = v.find(':');
+                if(c == std::string::npos) throw std::string("--arms takes A:B, e.g. 3:fold");
+                if(!parseArm(v.substr(0, c), arms[0]) || !parseArm(v.substr(c + 1), arms[1])) {
+                    throw std::string("--arms entries must be 2, 3, fold or fold3");
+                }
+            }
             else if(a.equals("", "--herd"))        cfg.herdSize      = (int)util::parseUInt32(a.arg);
             else if(a.equals("", "--pool"))        cfg.poolSize      = (int)util::parseUInt32(a.arg);
             else if(a.equals("", "--mix")) {
@@ -251,7 +309,7 @@ int main(int argc, char **argv)
             else if(a.equals("-t", "--threads"))   cfg.threads       = (int)util::parseUInt32(a.arg);
             else if(a.equals("-d", "--dp-bits"))   cfg.dpBits        = (int)util::parseUInt32(a.arg);
             else if(a.equals("", "--stride-bits")) cfg.strideBits    = (int)util::parseUInt32(a.arg);
-            else if(a.equals("", "--jumps"))       cfg.jumpCount     = (int)util::parseUInt32(a.arg);
+            else if(a.equals("", "--jumps"))       { cfg.jumpCount = (int)util::parseUInt32(a.arg); haveJumps = true; }
             else if(a.equals("", "--seed"))        cfg.seed          = util::parseUInt64(a.arg);
             else if(a.equals("", "--max-steps"))   cfg.maxSteps      = util::parseUInt64(a.arg);
             else if(a.equals("", "--benchmark"))   benchmark         = (int)util::parseUInt32(a.arg);
@@ -267,9 +325,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /*
+     * A folded walk enters a fruitless cycle with probability about 1/(2*jumps)
+     * per step, so the 32 entry table that suits an unfolded herd spends more on
+     * escapes than folding saves.  Raise it unless the caller asked for a size.
+     */
+    bool anyFold = cfg.fold || (benchmark > 0 && (arms[0].fold || arms[1].fold));
+    if(anyFold && !haveJumps && cfg.jumpCount < 1024) {
+        cfg.jumpCount = 1024;
+        printf("Folded walk: raising the jump table to %d entries (cycle rate ~1/2J)\n",
+               cfg.jumpCount);
+    }
+
     if(benchmark > 0) {
         try {
-            return runBenchmark(cfg, benchmark);
+            return runBenchmark(cfg, benchmark, arms);
         } catch(std::string err) {
             printf("Error: %s\n", err.c_str());
             return 1;
@@ -295,11 +365,12 @@ int main(int argc, char **argv)
     printf("Target      : %s\n", cfg.target.toString(true).c_str());
     printf("Range       : %s : %s  (2^%d)\n",
            cfg.rangeStart.toString().c_str(), cfg.rangeEnd.toString().c_str(), rangeBits);
-    printf("Herd        : %d walkers, %d charge classes%s\n",
+    printf("Herd        : %d walkers, %d charge classes%s%s\n",
            cfg.herdSize, cfg.chargeClasses,
-           cfg.chargeClasses == 3 ? " {0,+1,-1}" : " {0,+1}");
+           cfg.chargeClasses == 3 ? " {0,+1,-1}" : " {0,+1}",
+           cfg.fold ? ", folded orbits {P,-P}" : "");
     printf("Expected    : ~%s group operations\n\n",
-           util::formatThousands((uint64_t)(2.1 * sqrtW)).c_str());
+           util::formatThousands((uint64_t)((cfg.fold ? 1.5 : 2.1) * sqrtW)).c_str());
 
     secp256k1::uint256 key;
     kangaroo::Stats st;
@@ -319,6 +390,11 @@ int main(int argc, char **argv)
 
     printf("FOUND  private key : %s\n\n", key.toString().c_str());
     printStats("stats", st, sqrtW);
+    if(cfg.fold) {
+        printf("  folds=%llu  cycles escaped=%llu\n",
+               (unsigned long long)st.foldNegations,
+               (unsigned long long)st.cycleEvents);
+    }
 
     if(!outFile.empty()) {
         util::appendToFile(outFile, key.toString() + " " + cfg.target.toString(true) + "\n");
