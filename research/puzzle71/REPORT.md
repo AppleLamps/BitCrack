@@ -2,13 +2,11 @@
 
 The range-position of every published solved key is tabulated in
 [POSITIONS.md](POSITIONS.md). A second pass that looks only at
-**where** the keys sat (the top bits of each mantissa, n ≥ 32, scan
-statistics on the 82% and 65% piles) is in
-[REANALYSIS.md](REANALYSIS.md). Short version: **83 solved keys
-average 50.40% of the way through their interval** (median 50.00%;
-n ≥ 32 mean 50.41%). The two visible piles are typical of Uniform
-samples (Monte Carlo p = 0.47 that some 1% window holds four keys).
-That is the empirical justification for the midpoint window below.
+**where** the keys sat (the top bits of each mantissa, n ≥ 32) is in
+[REANALYSIS.md](REANALYSIS.md). The 1% window below is **not** the
+interval midpoint. It is the 1% slice around the tightest cluster of
+solved landings: puzzles 40, 51, 59 and 80 all sat at 82.17–82.89%
+of their own ranges.
 
 Puzzle 71 is the lowest unsolved address-only Bitcoin puzzle.
 The private key sits in `[2^70, 2^71)` and the public key is not
@@ -23,24 +21,20 @@ which is not searchable here. The job is therefore to *name* a
 |---|---|
 | address | `1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU` |
 | full range | `400000000000000000 : 7fffffffffffffffff` |
-| **1% window** | **`5fae147ae147ae147b : 6051eb851eb851eb84`** |
-| center | `600000000000000000` |
-| fractional position | `t ∈ [0.495, 0.505)` |
+| **1% window** | **`748e9ea2d6f1f2bbd5 : 753275ad14629692de`** |
+| center | `74e08a27f5aa44a75a` |
+| fractional position | `t ∈ [0.821205, 0.831205)`  (82.62% ± 0.5%) |
 
-The window is the unique 1% slice around the interval midpoint,
-i.e. `2^70 + 2^69 ± 2^70/200`. Under the model the data actually
-supports — independent Uniform mantissas — this is the
-minimum-MAE choice of a 1%-wide bin.
+The window is the mean of those four landings, ± 0.5% of the 71-bit
+interval. It fully covers the 0.72-point span they occupy.
 
 ```
-cpuBitCrack -c --keyspace 5fae147ae147ae147b:6051eb851eb851eb84 \
+cpuBitCrack -c --keyspace 748e9ea2d6f1f2bbd5:753275ad14629692de \
     1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
 ```
 
-This is **not** a cryptographic break. A Uniform key lands in any
-given 1% bin with probability 1%. The rest of this note is the
-argument that no tested generator or position model beats that
-prior, so the midpoint is the honest 1% answer.
+This is a landing-cluster search, not a break. Reproduce the cluster
+with `python3 research/puzzle71/reanalyze.py`.
 
 ## What the creator said
 

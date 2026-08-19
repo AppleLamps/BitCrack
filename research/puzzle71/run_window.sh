@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Scan the predicted 1% window for Bitcoin puzzle 71.
-# Range is midpoint ± 0.5% of [2^70, 2^71): about 1.1806e19 keys.
+# Scan the 1% window centred on the tightest solved-key landing cluster
+# (puzzles 40, 51, 59, 80 all sat at 82.2–82.9% of their own ranges).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -9,7 +9,7 @@ if [[ ! -x "$BIN" ]]; then
     make BUILD_CPU=1
 fi
 exec "$BIN" -t "${THREADS:-4}" -p "${POINTS:-4096}" -c \
-    --keyspace 5fae147ae147ae147b:6051eb851eb851eb84 \
+    --keyspace 748e9ea2d6f1f2bbd5:753275ad14629692de \
     --continue "${ROOT}/research/puzzle71/p71.progress" \
     -o "${ROOT}/research/puzzle71/found.txt" \
     1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU

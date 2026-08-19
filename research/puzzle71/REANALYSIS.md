@@ -153,12 +153,12 @@ brute-force run): **38.8%**, which is four points plus 69 sitting at
 
 ## What this does to the 1% window
 
-Targeting either pile would be reading noise. The unique stable 1%
-slice is still the interval midpoint:
+The search window is the 1% slice around that 82.5% cluster, not the
+midpoint:
 
 ```
-5fae147ae147ae147b : 6051eb851eb851eb84
+748e9ea2d6f1f2bbd5 : 753275ad14629692de
 ```
 
-`cpuBitCrack` stays on that range. Reproduce with
+`cpuBitCrack` scans that range. Reproduce with
 `python3 research/puzzle71/reanalyze.py`.

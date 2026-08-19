@@ -1,23 +1,23 @@
-Puzzle 71 — 1% window (midpoint ± 0.5%)
+Puzzle 71 — 1% window from solved-key landings
 
 Address : 1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
-Range   : 2^70 .. 2^71-1
-          400000000000000000 : 7fffffffffffffffff
+Full    : 400000000000000000 : 7fffffffffffffffff
 
-t       : [0.495, 0.505) of the 71-bit interval
-Center  : 600000000000000000
-Start   : 5fae147ae147ae147b
-End     : 6051eb851eb851eb84
+Rule    : 1% slice around the tightest cluster of published t values.
+          Puzzles 40, 51, 59, 80 all landed at 82.17–82.89% of their
+          own ranges (span 0.72 points). Window is that mean ± 0.5%.
+
+t       : [0.821205, 0.831205)
+Center  : 74e08a27f5aa44a75a   (82.6205% of the 71-bit interval)
+Start   : 748e9ea2d6f1f2bbd5
+End     : 753275ad14629692de
 Width   : 11805916207174113034 keys  (exactly 1% of 2^70)
 
-Run (CPU, 4 threads, checkpoint + found file):
+Run:
   research/puzzle71/run_window.sh
 
 BitCrack:
-  cpuBitCrack -c --keyspace 5fae147ae147ae147b:6051eb851eb851eb84 \
+  cpuBitCrack -c --keyspace 748e9ea2d6f1f2bbd5:753275ad14629692de \
       --continue research/puzzle71/p71.progress \
       -o research/puzzle71/found.txt \
       1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
-
-Recompute the window:
-  python3 research/puzzle71/analyze.py
