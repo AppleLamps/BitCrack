@@ -60,6 +60,14 @@ static inline void round(unsigned int a, unsigned int b, unsigned int c, unsigne
 extern "C" void crypto_sha256_shani(unsigned int *msg, unsigned int *digest);
 extern "C" void crypto_sha256_shani2(unsigned int *msg0, unsigned int *digest0,
 	unsigned int *msg1, unsigned int *digest1);
+extern "C" void crypto_sha256_shani4(unsigned int *msg0, unsigned int *digest0,
+	unsigned int *msg1, unsigned int *digest1,
+	unsigned int *msg2, unsigned int *digest2,
+	unsigned int *msg3, unsigned int *digest3);
+extern "C" void crypto_sha256_shani4_iv(unsigned int *msg0, unsigned int *digest0,
+	unsigned int *msg1, unsigned int *digest1,
+	unsigned int *msg2, unsigned int *digest2,
+	unsigned int *msg3, unsigned int *digest3);
 #endif
 
 static bool detectShaNi()
@@ -166,4 +174,38 @@ void crypto::sha2562(unsigned int *msg0, unsigned int *digest0, unsigned int *ms
 #endif
 	sha256Software(msg0, digest0);
 	sha256Software(msg1, digest1);
+}
+
+void crypto::sha2564(unsigned int *msg0, unsigned int *digest0, unsigned int *msg1, unsigned int *digest1,
+	unsigned int *msg2, unsigned int *digest2, unsigned int *msg3, unsigned int *digest3)
+{
+#if defined(HAVE_SHA_NI)
+	if(kUseShaNi) {
+		crypto_sha256_shani4(msg0, digest0, msg1, digest1, msg2, digest2, msg3, digest3);
+		return;
+	}
+#endif
+	sha256Software(msg0, digest0);
+	sha256Software(msg1, digest1);
+	sha256Software(msg2, digest2);
+	sha256Software(msg3, digest3);
+}
+
+void crypto::sha2564FromIv(unsigned int *msg0, unsigned int *digest0, unsigned int *msg1, unsigned int *digest1,
+	unsigned int *msg2, unsigned int *digest2, unsigned int *msg3, unsigned int *digest3)
+{
+#if defined(HAVE_SHA_NI)
+	if(kUseShaNi) {
+		crypto_sha256_shani4_iv(msg0, digest0, msg1, digest1, msg2, digest2, msg3, digest3);
+		return;
+	}
+#endif
+	sha256Init(digest0);
+	sha256Software(msg0, digest0);
+	sha256Init(digest1);
+	sha256Software(msg1, digest1);
+	sha256Init(digest2);
+	sha256Software(msg2, digest2);
+	sha256Init(digest3);
+	sha256Software(msg3, digest3);
 }

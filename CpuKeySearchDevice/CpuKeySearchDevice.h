@@ -38,6 +38,8 @@ private:
 
     void processOne(uint64_t index);
     void processFour(uint64_t index);
+    void processEight(uint64_t index);
+    void processSixteen(uint64_t index);
     void processRange(uint64_t begin, uint64_t end);
     void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t), uint64_t totalPoints);
     bool checkAndRecord(uint64_t index, bool compressed, const unsigned int digest[5]);

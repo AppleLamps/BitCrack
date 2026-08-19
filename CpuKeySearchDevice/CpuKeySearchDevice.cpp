@@ -197,13 +197,15 @@ void CpuKeySearchDevice::init(const secp256k1::uint256 &start, int compression, 
     uint256ToLimbs(step.y, _stepQy);
 
     if(crypto::sha256UsesHardware()) {
-        Logger::log(LogLevel::Info, "SHA-256: hardware SHA-NI");
+        Logger::log(LogLevel::Info, "SHA-256: hardware SHA-NI 4-way");
     } else {
         Logger::log(LogLevel::Info, "SHA-256: software");
     }
 
-    if(crypto::ripemd160UsesAvx2()) {
-        Logger::log(LogLevel::Info, "RIPEMD-160: AVX2 4-way");
+    if(crypto::ripemd160UsesAvx512()) {
+        Logger::log(LogLevel::Info, "RIPEMD-160: AVX-512 16-way");
+    } else if(crypto::ripemd160UsesAvx2()) {
+        Logger::log(LogLevel::Info, "RIPEMD-160: AVX2 8-way");
     } else {
         Logger::log(LogLevel::Info, "RIPEMD-160: software");
     }
@@ -264,11 +266,21 @@ uint64_t CpuKeySearchDevice::keysToHashThisStep()
 bool CpuKeySearchDevice::checkAndRecord(uint64_t index, bool compressed, const unsigned int digest[5])
 {
     if(_singleTarget) {
+#if defined(__GNUC__)
+        if(__builtin_expect(digest[0] != _singleTargetHash[0], 1) ||
+           digest[1] != _singleTargetHash[1] ||
+           digest[2] != _singleTargetHash[2] ||
+           digest[3] != _singleTargetHash[3] ||
+           digest[4] != _singleTargetHash[4]) {
+            return false;
+        }
+#else
         if(digest[0] != _singleTargetHash[0] || digest[1] != _singleTargetHash[1] ||
            digest[2] != _singleTargetHash[2] || digest[3] != _singleTargetHash[3] ||
            digest[4] != _singleTargetHash[4]) {
             return false;
         }
+#endif
     } else {
         KeySearchTarget target(digest);
         if(_targets.find(target) == _targets.end()) {
@@ -329,11 +341,10 @@ void CpuKeySearchDevice::processFour(uint64_t index)
     for(int lane = 0; lane < 4; lane++) {
         const size_t i = (size_t)index + (size_t)lane;
         fillCompressedShaMsg(&_fx[i * 4], _fy[i * 4] & 1, shaMsg[lane]);
-        crypto::sha256Init(shaDigest[lane]);
     }
 
-    crypto::sha2562(shaMsg[0], shaDigest[0], shaMsg[1], shaDigest[1]);
-    crypto::sha2562(shaMsg[2], shaDigest[2], shaMsg[3], shaDigest[3]);
+    crypto::sha2564FromIv(shaMsg[0], shaDigest[0], shaMsg[1], shaDigest[1],
+        shaMsg[2], shaDigest[2], shaMsg[3], shaDigest[3]);
 
     for(int lane = 0; lane < 4; lane++) {
         shaDigestToRipemdMsg(shaDigest[lane], ripeMsg[lane]);
@@ -346,10 +357,84 @@ void CpuKeySearchDevice::processFour(uint64_t index)
     }
 }
 
+void CpuKeySearchDevice::processEight(uint64_t index)
+{
+    unsigned int shaMsg[8][16];
+    unsigned int shaDigest[8][8];
+    unsigned int digest[8][5];
+
+    for(int lane = 0; lane < 8; lane++) {
+        const size_t i = (size_t)index + (size_t)lane;
+        fillCompressedShaMsg(&_fx[i * 4], _fy[i * 4] & 1, shaMsg[lane]);
+    }
+
+    crypto::sha2564FromIv(shaMsg[0], shaDigest[0], shaMsg[1], shaDigest[1],
+        shaMsg[2], shaDigest[2], shaMsg[3], shaDigest[3]);
+    crypto::sha2564FromIv(shaMsg[4], shaDigest[4], shaMsg[5], shaDigest[5],
+        shaMsg[6], shaDigest[6], shaMsg[7], shaDigest[7]);
+
+    crypto::ripemd160FromSha256x8(shaDigest, digest);
+
+    for(int lane = 0; lane < 8; lane++) {
+        checkAndRecord(index + (uint64_t)lane, true, digest[lane]);
+    }
+}
+
+void CpuKeySearchDevice::processSixteen(uint64_t index)
+{
+    unsigned int shaMsg[16][16];
+    unsigned int shaDigest[16][8];
+    unsigned int digest[16][5];
+
+    for(int lane = 0; lane < 16; lane++) {
+        const size_t i = (size_t)index + (size_t)lane;
+        fillCompressedShaMsg(&_fx[i * 4], _fy[i * 4] & 1, shaMsg[lane]);
+    }
+
+    crypto::sha2564FromIv(shaMsg[0], shaDigest[0], shaMsg[1], shaDigest[1],
+        shaMsg[2], shaDigest[2], shaMsg[3], shaDigest[3]);
+    crypto::sha2564FromIv(shaMsg[4], shaDigest[4], shaMsg[5], shaDigest[5],
+        shaMsg[6], shaDigest[6], shaMsg[7], shaDigest[7]);
+    crypto::sha2564FromIv(shaMsg[8], shaDigest[8], shaMsg[9], shaDigest[9],
+        shaMsg[10], shaDigest[10], shaMsg[11], shaDigest[11]);
+    crypto::sha2564FromIv(shaMsg[12], shaDigest[12], shaMsg[13], shaDigest[13],
+        shaMsg[14], shaDigest[14], shaMsg[15], shaDigest[15]);
+
+    crypto::ripemd160FromSha256x16(shaDigest, digest);
+
+    for(int lane = 0; lane < 16; lane++) {
+        checkAndRecord(index + (uint64_t)lane, true, digest[lane]);
+    }
+}
+
 void CpuKeySearchDevice::processRange(uint64_t begin, uint64_t end)
 {
     uint64_t i = begin;
     if(_compression == PointCompressionType::COMPRESSED) {
+        if(crypto::ripemd160UsesAvx512()) {
+            while(i + 16 <= end) {
+#if defined(__GNUC__)
+                if(i + 32 < end) {
+                    __builtin_prefetch(&_fx[((size_t)i + 32) * 4], 0, 3);
+                    __builtin_prefetch(&_fy[((size_t)i + 32) * 4], 0, 3);
+                }
+#endif
+                processSixteen(i);
+                i += 16;
+            }
+        }
+        if(crypto::ripemd160UsesAvx2()) {
+            while(i + 8 <= end) {
+#if defined(__GNUC__)
+                if(i + 24 < end) {
+                    __builtin_prefetch(&_fx[((size_t)i + 24) * 4], 0, 3);
+                    __builtin_prefetch(&_fy[((size_t)i + 24) * 4], 0, 3);
+                }
+#endif
+                processEight(i);
+                i += 8;
+            }
+        }
         while(i + 4 <= end) {
 #if defined(__GNUC__)
             if(i + 12 < end) {
@@ -414,18 +499,54 @@ void CpuKeySearchDevice::doStep()
     const uint64_t hashCount = keysToHashThisStep();
 #ifdef _OPENMP
     if(_compression == PointCompressionType::COMPRESSED) {
-        const int64_t n4 = (int64_t)(hashCount & ~(uint64_t)3);
-        #pragma omp parallel for schedule(static) num_threads(_threads)
-        for(int64_t i = 0; i < n4; i += 4) {
+        uint64_t i = 0;
+        if(crypto::ripemd160UsesAvx512()) {
+            const int64_t n16 = (int64_t)(hashCount & ~(uint64_t)15);
+            #pragma omp parallel for schedule(static) num_threads(_threads)
+            for(int64_t j = 0; j < n16; j += 16) {
 #if defined(__GNUC__)
-            if(i + 12 < (int64_t)hashCount) {
-                __builtin_prefetch(&_fx[((size_t)i + 12) * 4], 0, 3);
-                __builtin_prefetch(&_fy[((size_t)i + 12) * 4], 0, 3);
-            }
+                if(j + 32 < (int64_t)hashCount) {
+                    __builtin_prefetch(&_fx[((size_t)j + 32) * 4], 0, 3);
+                    __builtin_prefetch(&_fy[((size_t)j + 32) * 4], 0, 3);
+                }
 #endif
-            processFour((uint64_t)i);
+                processSixteen((uint64_t)j);
+            }
+            i = (uint64_t)n16;
         }
-        for(uint64_t i = (uint64_t)n4; i < hashCount; i++) {
+        if(crypto::ripemd160UsesAvx2()) {
+            const int64_t n8 = (int64_t)(hashCount & ~(uint64_t)7);
+            if((int64_t)i < n8) {
+                #pragma omp parallel for schedule(static) num_threads(_threads)
+                for(int64_t j = (int64_t)i; j < n8; j += 8) {
+#if defined(__GNUC__)
+                    if(j + 24 < (int64_t)hashCount) {
+                        __builtin_prefetch(&_fx[((size_t)j + 24) * 4], 0, 3);
+                        __builtin_prefetch(&_fy[((size_t)j + 24) * 4], 0, 3);
+                    }
+#endif
+                    processEight((uint64_t)j);
+                }
+            }
+            i = (uint64_t)n8;
+        }
+        {
+            const int64_t n4 = (int64_t)(hashCount & ~(uint64_t)3);
+            if((int64_t)i < n4) {
+                #pragma omp parallel for schedule(static) num_threads(_threads)
+                for(int64_t j = (int64_t)i; j < n4; j += 4) {
+#if defined(__GNUC__)
+                    if(j + 12 < (int64_t)hashCount) {
+                        __builtin_prefetch(&_fx[((size_t)j + 12) * 4], 0, 3);
+                        __builtin_prefetch(&_fy[((size_t)j + 12) * 4], 0, 3);
+                    }
+#endif
+                    processFour((uint64_t)j);
+                }
+            }
+            i = (uint64_t)n4;
+        }
+        for(; i < hashCount; i++) {
             processOne(i);
         }
     } else {
