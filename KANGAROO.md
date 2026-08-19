@@ -111,6 +111,11 @@ to `w >> s` with `--gs-wild-shift s`, and restarts a walk when its centred
 displacement leaves its class window. Use `--arms fold:gs` to compare the
 geometry in the benchmark harness; the default walk is unchanged.
 
+It is kept as an experiment, not a recommendation: in paired benchmarks it is
+inside the noise of plain `--fold` at every setting where restarts do not fire, and
+worse than `--fold` at settings where they do. `research/REPORT.md` has the
+measurements and the reason.
+
 ## Reproducing the A/B result
 
 `--benchmark N` generates `N` random keys and solves each one **twice**, once with the

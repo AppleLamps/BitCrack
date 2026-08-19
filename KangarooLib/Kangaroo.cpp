@@ -402,6 +402,23 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
         k.histLen  = 0;
     };
 
+    /*
+     * Move a walker onto the even-y representative of its orbit, carrying the
+     * bookkeeping with it.  Every point that can reach the table has to pass
+     * through here: the table is keyed on x, so an odd-y entry and an even-y
+     * entry with the same x read as a collision whose exponents differ by a
+     * sign, which recovers a wrong key.
+     */
+    auto canonicalise = [&](Walker &k) {
+        if(k.pos.y.v[0] & 1) {
+            k.pos    = ecpoint(k.pos.x, negModP(k.pos.y));
+            k.charge = -k.charge;
+            k.off    = negModN(k.off);
+            k.disp   = negModN(k.disp);
+            st.foldNegations++;
+        }
+    };
+
     // Build the charge pattern.  Interleaving rather than blocking keeps class
     // members from being adjacent in the round robin.
     int mt = cfg.mixTame, mw = cfg.mixWild, mr = cfg.mixRefl;
@@ -471,13 +488,7 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
                  * representative that other walkers will store, or the two
                  * readings differ by a sign and the collision is lost.
                  */
-                if(k.pos.y.v[0] & 1) {
-                    k.pos    = ecpoint(k.pos.x, negModP(k.pos.y));
-                    k.charge = -k.charge;
-                    k.off    = negModN(k.off);
-                    k.disp   = negModN(k.disp);
-                    st.foldNegations++;
-                }
+                canonicalise(k);
 
                 if(gs) {
                     int c = k.charge == CHARGE_TAME ? 0 :
@@ -485,6 +496,7 @@ bool solve(const Config &cfg, uint256 &keyOut, Stats &statsOut)
                     if(centeredMagnitude(k.disp).cmp(classWidth[c]) > 0) {
                         st.gsRestarts++;
                         seedWalker(k, k.charge);
+                        canonicalise(k);
                         continue;
                     }
                 }
