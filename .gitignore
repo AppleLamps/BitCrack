@@ -294,3 +294,7 @@ Kangaroo/kangaroo.bin
 KangarooLib/*.o
 lib/
 bin/
+
+# Puzzle 71 live search
+research/puzzle71/p71.progress
+research/puzzle71/found.txt

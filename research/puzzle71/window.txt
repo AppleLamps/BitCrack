@@ -10,8 +10,14 @@ Start   : 5fae147ae147ae147b
 End     : 6051eb851eb851eb84
 Width   : 11805916207174113034 keys  (exactly 1% of 2^70)
 
-BitCrack:
-  cpuBitCrack -c --keyspace 5fae147ae147ae147b:6051eb851eb851eb84 1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
+Run (CPU, 4 threads, checkpoint + found file):
+  research/puzzle71/run_window.sh
 
-Recompute:
+BitCrack:
+  cpuBitCrack -c --keyspace 5fae147ae147ae147b:6051eb851eb851eb84 \
+      --continue research/puzzle71/p71.progress \
+      -o research/puzzle71/found.txt \
+      1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
+
+Recompute the window:
   python3 research/puzzle71/analyze.py
