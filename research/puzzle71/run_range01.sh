@@ -7,7 +7,8 @@ BIN="${ROOT}/bin/cpuBitCrack"
 if [[ ! -x "$BIN" ]]; then
     make BUILD_CPU=1
 fi
-exec "$BIN" -t "${THREADS:-4}" -p "${POINTS:-4096}" -c \
+exec stdbuf -oL "$BIN" -t "${THREADS:-4}" -p "${POINTS:-4096}" -c -f \
+    --status-interval "${STATUS_INTERVAL_MS:-10000}" \
     --keyspace 7CC000000000000000:7CCFFFFFFFFFFFFFFF \
     --continue "${ROOT}/research/puzzle71/range01.progress" \
     -o "${ROOT}/research/puzzle71/range01.found.txt" \
