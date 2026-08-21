@@ -1,0 +1,18 @@
+Puzzle 71 — RANGE_01 (0.098% window at ~95% of interval)
+
+Address : 1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
+Full    : 400000000000000000 : 7fffffffffffffffff
+
+Start   : 7CC000000000000000
+End     : 7CCFFFFFFFFFFFFFFF
+Width   : 1,152,921,504,606,846,976 keys  (2^60, 0.0977% of 2^70)
+Position: t ∈ [0.949219, 0.950195)  (~94.92%–95.02% of the 71-bit interval)
+
+Run:
+  research/puzzle71/run_range01.sh
+
+BitCrack:
+  cpuBitCrack -c --keyspace 7CC000000000000000:7CCFFFFFFFFFFFFFFF \
+      --continue research/puzzle71/range01.progress \
+      -o research/puzzle71/range01.found.txt \
+      1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
