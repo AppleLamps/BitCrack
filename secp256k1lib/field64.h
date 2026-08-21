@@ -48,6 +48,11 @@ static FE_INLINE bool fe_eq(const fe &a, const fe &b)
 	return a.n[0] == b.n[0] && a.n[1] == b.n[1] && a.n[2] == b.n[2] && a.n[3] == b.n[3];
 }
 
+static FE_INLINE bool fe_is_zero(const fe &a)
+{
+	return (a.n[0] | a.n[1] | a.n[2] | a.n[3]) == 0;
+}
+
 static FE_INLINE bool fe_is_inf(const fe &x, const fe &y)
 {
 	return x.n[0] == ~0ULL && x.n[1] == ~0ULL && x.n[2] == ~0ULL && x.n[3] == ~0ULL &&

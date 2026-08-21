@@ -68,6 +68,10 @@ typedef struct {
     std::string pubKey;
     int dpBits = 0;
     int kangarooOpt = KANGAROO_OPT_BATCH_ADD;
+
+    bool hammingEnabled = false;
+    int hammingMinOnes = 12;
+    int hammingMaxOnes = 16;
 }RunConfig;
 
 static RunConfig _config;
@@ -79,14 +83,17 @@ void writeCheckpoint(secp256k1::uint256 nextKey);
 static uint64_t _lastUpdate = 0;
 static uint64_t _runningTime = 0;
 static uint64_t _startTime = 0;
+static bool _matchFound = false;
 
 /**
 * Callback to display the private key
 */
 void resultCallback(KeySearchResult info)
 {
+	_matchFound = true;
+
 	if(_config.resultsFile.length() != 0) {
-		Logger::log(LogLevel::Info, "Found key for address '" + info.address + "'. Written to '" + _config.resultsFile + "'");
+		Logger::log(LogLevel::Info, "MATCH FOUND for address '" + info.address + "'. Written to '" + _config.resultsFile + "'");
 
 		std::string s = info.address + " " + info.privateKey.toString(16) + " " + info.publicKey.toString(info.compressed);
 		util::appendToFile(_config.resultsFile, s);
@@ -146,13 +153,16 @@ void statusCallback(KeySearchStatus info)
 
     const char *formatStr = NULL;
 
+    const char *matchStr = _matchFound ? "MATCH FOUND" : "no match";
+
     if(_config.follow) {
-        formatStr = "%s %s/%sMB | %s %s %s %s\n";
+        formatStr = "%s %s/%sMB | %s %s %s %s | %s\n";
     } else {
-        formatStr = "\r%s %s / %sMB | %s %s %s %s";
+        formatStr = "\r%s %s / %sMB | %s %s %s %s | %s";
     }
 
-	printf(formatStr, devName.c_str(), usedMemStr.c_str(), totalMemStr.c_str(), targetStr.c_str(), speedStr.c_str(), totalStr.c_str(), timeStr.c_str());
+	printf(formatStr, devName.c_str(), usedMemStr.c_str(), totalMemStr.c_str(), targetStr.c_str(), speedStr.c_str(), totalStr.c_str(), timeStr.c_str(), matchStr);
+	fflush(stdout);
 
     if(_config.checkpointFile.length() > 0) {
         uint64_t t = util::getSystemTime();
@@ -228,6 +238,8 @@ void usage()
     printf("--stride N              Increment by N keys at a time\n");
     printf("--share M/N             Divide the keyspace into N equal shares, process the Mth share\n");
     printf("--continue FILE         Save/load progress from FILE\n");
+    printf("--status-interval MS    Status log interval in milliseconds (default 1800)\n");
+    printf("--hamming MIN:MAX       7-hex prefix popcount gate (e.g. 12:16 for puzzle PRNG clusters)\n");
     printf("--kangaroo              Pollard kangaroo ECDLP (needs a public key, not an address)\n");
     printf("--pubkey KEY            secp256k1 public key (02/03 compressed or 04 uncompressed hex)\n");
     printf("--dp BITS               Distinguished-point trailing zero bits (0 = auto)\n");
@@ -490,6 +502,11 @@ int run()
     Logger::log(LogLevel::Info, "Starting at: " + _config.nextKey.toString());
     Logger::log(LogLevel::Info, "Ending at:   " + _config.endKey.toString());
     Logger::log(LogLevel::Info, "Counting by: " + _config.stride.toString());
+    if(_config.hammingEnabled) {
+        Logger::log(LogLevel::Info, "Hamming filter: 7-hex prefix with " +
+                    util::format(_config.hammingMinOnes) + " to " +
+                    util::format(_config.hammingMaxOnes) + " ones (~65.5% pass rate)");
+    }
 
     try {
 
@@ -513,6 +530,16 @@ int run()
 
         // Get device context
         KeySearchDevice *d = getDeviceContext(_devices[_config.device], _config.blocks, _config.threads, _config.pointsPerThread);
+
+#ifdef BUILD_CPU
+        if(_config.hammingEnabled) {
+            if(_devices[_config.device].type != DeviceManager::DeviceType::CPU) {
+                throw KeySearchException("Hamming filter requires a CPU device");
+            }
+            static_cast<CpuKeySearchDevice *>(d)->setHammingFilter(
+                _config.hammingMinOnes, _config.hammingMaxOnes);
+        }
+#endif
 
         KeyFinder f(_config.nextKey, _config.endKey, _config.compression, d, _config.stride);
 
@@ -635,6 +662,8 @@ int main(int argc, char **argv)
     parser.add("", "--dp", true);
     parser.add("", "--kangaroo-opt", true);
     parser.add("", "--kangaroo-bench", false);
+    parser.add("", "--status-interval", true);
+    parser.add("", "--hamming", true);
 
     try {
         parser.parse(argc, argv);
@@ -675,6 +704,16 @@ int main(int argc, char **argv)
                 listDevices = true;
             } else if(optArg.equals("", "--continue")) {
                 _config.checkpointFile = optArg.arg;
+            } else if(optArg.equals("", "--status-interval")) {
+                _config.statusInterval = util::parseUInt64(optArg.arg);
+            } else if(optArg.equals("", "--hamming")) {
+                size_t colon = optArg.arg.find(':');
+                if(colon == std::string::npos) {
+                    throw std::string("expected MIN:MAX");
+                }
+                _config.hammingMinOnes = (int)util::parseUInt32(optArg.arg.substr(0, colon));
+                _config.hammingMaxOnes = (int)util::parseUInt32(optArg.arg.substr(colon + 1));
+                _config.hammingEnabled = true;
             } else if(optArg.equals("", "--keyspace")) {
                 secp256k1::uint256 start;
                 secp256k1::uint256 end;

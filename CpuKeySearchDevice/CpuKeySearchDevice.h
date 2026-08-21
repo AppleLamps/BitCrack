@@ -36,8 +36,18 @@ private:
     std::vector<KeySearchResult> _results;
     std::mutex _resultsMutex;
 
+    bool _hammingEnabled;
+    int _hammingMinOnes;
+    int _hammingMaxOnes;
+
+    bool passesHammingFilter(uint64_t index);
+    static uint32_t top7HexBits(const secp256k1::uint256 &k);
+    static int popcount28(uint32_t x);
+
     void processOne(uint64_t index);
     void processFour(uint64_t index);
+    void processEight(uint64_t index);
+    void processSixteen(uint64_t index);
     void processRange(uint64_t begin, uint64_t end);
     void runWorkers(void (CpuKeySearchDevice::*fn)(uint64_t, uint64_t), uint64_t totalPoints);
     bool checkAndRecord(uint64_t index, bool compressed, const unsigned int digest[5]);
@@ -51,6 +61,7 @@ public:
     virtual void doStep();
     virtual void setTargets(const std::set<KeySearchTarget> &targets);
     virtual void setEndKey(const secp256k1::uint256 &endKey);
+    void setHammingFilter(int minOnes, int maxOnes);
     virtual size_t getResults(std::vector<KeySearchResult> &results);
     virtual uint64_t keysPerStep();
     virtual std::string getDeviceName();

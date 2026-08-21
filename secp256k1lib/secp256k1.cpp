@@ -819,7 +819,11 @@ static void bulkInversionFeRange(std::vector<fe> &in, size_t begin, size_t end)
 	}
 
 	size_t count = end - begin;
-	std::vector<fe> products(count);
+	static thread_local std::vector<fe> productsBuf;
+	if(productsBuf.size() < count) {
+		productsBuf.resize(count);
+	}
+	fe *products = productsBuf.data();
 	fe total;
 	fe_set1(total);
 
@@ -1283,12 +1287,25 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 	}
 
 #if defined(__SIZEOF_INT128__)
+#if defined(__GNUC__)
+#define BC_UNLIKELY(x) __builtin_expect(!!(x), 0)
+#else
+#define BC_UNLIKELY(x) (x)
+#endif
 	fe qxf, qyf;
 	fe_load_u64(qxf, qx);
 	fe_load_u64(qyf, qy);
 
-	std::vector<fe> run(n);
-	std::vector<unsigned char> op(n);
+	static std::vector<fe> runBuf;
+	static std::vector<unsigned char> opBuf;
+	if(runBuf.size() < n) {
+		runBuf.resize(n);
+		opBuf.resize(n);
+	}
+	fe *run = runBuf.data();
+	unsigned char *op = opBuf.data();
+	fe *fx = reinterpret_cast<fe *>(x);
+	fe *fy = reinterpret_cast<fe *>(y);
 
 #ifdef _OPENMP
 	#pragma omp parallel for schedule(static) num_threads(threads)
@@ -1296,27 +1313,22 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 #else
 	for(size_t i = 0; i < n; i++) {
 #endif
-		const uint64_t *xi = x + (size_t)i * 4;
-		const uint64_t *yi = y + (size_t)i * 4;
-		fe px, py;
 #if defined(__GNUC__)
-		if((size_t)i + 8 < n) {
-			__builtin_prefetch(x + ((size_t)i + 8) * 4, 0, 3);
+		if((size_t)i + 16 < n) {
+			__builtin_prefetch(fx + (size_t)i + 16, 0, 3);
 		}
 #endif
-		fe_load_u64(px, xi);
-		fe_load_u64(py, yi);
-		if(fe_eq(px, qxf)) {
-			if(fe_eq(py, qyf)) {
+		fe_sub(run[i], fx[i], qxf);
+		if(BC_UNLIKELY(fe_is_zero(run[i]))) {
+			if(fe_eq(fy[i], qyf)) {
 				op[i] = 2;
-				fe_add(run[i], py, py);
+				fe_add(run[i], fy[i], fy[i]);
 			} else {
 				op[i] = 3;
 				fe_set1(run[i]);
 			}
 		} else {
 			op[i] = 0;
-			fe_sub(run[i], px, qxf);
 		}
 	}
 
@@ -1335,13 +1347,13 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 			if(end > n) {
 				end = n;
 			}
-			bulkInversionFeRange(run, begin, end);
+			bulkInversionFeRange(runBuf, begin, end);
 		}
 	} else {
-		bulkInversionFeRange(run, 0, n);
+		bulkInversionFeRange(runBuf, 0, n);
 	}
 #else
-	bulkInversionFeRange(run, 0, n);
+	bulkInversionFeRange(runBuf, 0, n);
 	(void)threads;
 #endif
 
@@ -1351,51 +1363,46 @@ void secp256k1::addPointsBulkXY(uint64_t *x, uint64_t *y, size_t n, const uint64
 #else
 	for(size_t i = 0; i < n; i++) {
 #endif
-		uint64_t *xi = x + (size_t)i * 4;
-		uint64_t *yi = y + (size_t)i * 4;
 #if defined(__GNUC__)
-		if((size_t)i + 8 < n) {
-			__builtin_prefetch(x + ((size_t)i + 8) * 4, 0, 3);
-			__builtin_prefetch(y + ((size_t)i + 8) * 4, 0, 3);
+		if((size_t)i + 16 < n) {
+			__builtin_prefetch(fx + (size_t)i + 16, 0, 3);
+			__builtin_prefetch(fy + (size_t)i + 16, 0, 3);
 		}
 #endif
-		if(op[i] == 3) {
-			xi[0] = xi[1] = xi[2] = xi[3] = ~0ULL;
-			yi[0] = yi[1] = yi[2] = yi[3] = ~0ULL;
-			continue;
-		}
+		if(BC_UNLIKELY(op[i] != 0)) {
+			if(op[i] == 3) {
+				fx[i].n[0] = fx[i].n[1] = fx[i].n[2] = fx[i].n[3] = ~0ULL;
+				fy[i].n[0] = fy[i].n[1] = fy[i].n[2] = fy[i].n[3] = ~0ULL;
+				continue;
+			}
 
-		fe px, py, s, rx, ry, tmp;
-		fe_load_u64(px, xi);
-		fe_load_u64(py, yi);
-
-		if(op[i] == 2) {
-			fe_sqr(tmp, px);
+			fe s, rx, ry, tmp;
+			fe_sqr(tmp, fx[i]);
 			fe_add(s, tmp, tmp);
 			fe_add(s, s, tmp);
 			fe_mul(s, s, run[i]);
 			fe_sqr(tmp, s);
-			fe_sub(rx, tmp, px);
-			fe_sub(rx, rx, px);
-			fe_sub(tmp, px, rx);
+			fe_sub(rx, tmp, fx[i]);
+			fe_sub(rx, rx, fx[i]);
+			fe_sub(tmp, fx[i], rx);
 			fe_mul(ry, s, tmp);
-			fe_sub(ry, ry, py);
-			fe_store_u64(xi, rx);
-			fe_store_u64(yi, ry);
+			fe_sub(fy[i], ry, fy[i]);
+			fx[i] = rx;
 			continue;
 		}
 
-		fe_sub(tmp, py, qyf);
+		fe s, rx, tmp;
+		fe_sub(tmp, fy[i], qyf);
 		fe_mul(s, tmp, run[i]);
 		fe_sqr(tmp, s);
-		fe_sub(rx, tmp, px);
+		fe_sub(rx, tmp, fx[i]);
 		fe_sub(rx, rx, qxf);
-		fe_sub(tmp, px, rx);
-		fe_mul(ry, s, tmp);
-		fe_sub(ry, ry, py);
-		fe_store_u64(xi, rx);
-		fe_store_u64(yi, ry);
+		fe_sub(tmp, fx[i], rx);
+		fe_mul(tmp, s, tmp);
+		fe_sub(fy[i], tmp, fy[i]);
+		fx[i] = rx;
 	}
+#undef BC_UNLIKELY
 #else
 	std::vector<ecpoint> points(n);
 	uint256 qx256, qy256;

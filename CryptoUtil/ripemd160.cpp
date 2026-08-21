@@ -348,6 +348,13 @@ void crypto::ripemd160(unsigned int *x, unsigned int *digest)
 
 #if defined(HAVE_AVX2)
 extern "C" void crypto_ripemd160_avx2(unsigned int *msg, unsigned int *digest);
+extern "C" void crypto_ripemd160_avx2x8(unsigned int *msg, unsigned int *digest);
+extern "C" void crypto_ripemd160_fromsha_avx2x8(unsigned int *sha, unsigned int *digest);
+#endif
+
+#if defined(HAVE_AVX512)
+extern "C" void crypto_ripemd160_avx512x16(unsigned int *msg, unsigned int *digest);
+extern "C" void crypto_ripemd160_fromsha_avx512x16(unsigned int *sha, unsigned int *digest);
 #endif
 
 static bool detectRipemdAvx2()
@@ -360,11 +367,27 @@ static bool detectRipemdAvx2()
 #endif
 }
 
+static bool detectRipemdAvx512()
+{
+#if defined(HAVE_AVX512) && defined(__GNUC__)
+	__builtin_cpu_init();
+	return __builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512bw");
+#else
+	return false;
+#endif
+}
+
 static const bool kUseRipemdAvx2 = detectRipemdAvx2();
+static const bool kUseRipemdAvx512 = detectRipemdAvx512();
 
 bool crypto::ripemd160UsesAvx2()
 {
 	return kUseRipemdAvx2;
+}
+
+bool crypto::ripemd160UsesAvx512()
+{
+	return kUseRipemdAvx512;
 }
 
 void crypto::ripemd160x4(unsigned int msg[4][16], unsigned int digest[4][5])
@@ -379,4 +402,65 @@ void crypto::ripemd160x4(unsigned int msg[4][16], unsigned int digest[4][5])
 	crypto::ripemd160(msg[1], digest[1]);
 	crypto::ripemd160(msg[2], digest[2]);
 	crypto::ripemd160(msg[3], digest[3]);
+}
+
+void crypto::ripemd160x8(unsigned int msg[8][16], unsigned int digest[8][5])
+{
+#if defined(HAVE_AVX2)
+	if(kUseRipemdAvx2) {
+		crypto_ripemd160_avx2x8(&msg[0][0], &digest[0][0]);
+		return;
+	}
+#endif
+	ripemd160x4(msg, digest);
+	ripemd160x4(&msg[4], &digest[4]);
+}
+
+void crypto::ripemd160x16(unsigned int msg[16][16], unsigned int digest[16][5])
+{
+#if defined(HAVE_AVX512)
+	if(kUseRipemdAvx512) {
+		crypto_ripemd160_avx512x16(&msg[0][0], &digest[0][0]);
+		return;
+	}
+#endif
+	ripemd160x8(msg, digest);
+	ripemd160x8(&msg[8], &digest[8]);
+}
+
+void crypto::ripemd160FromSha256x8(unsigned int sha[8][8], unsigned int digest[8][5])
+{
+#if defined(HAVE_AVX2)
+	if(kUseRipemdAvx2) {
+		crypto_ripemd160_fromsha_avx2x8(&sha[0][0], &digest[0][0]);
+		return;
+	}
+#endif
+	unsigned int msg[8][16];
+	for(int lane = 0; lane < 8; lane++) {
+		for(int i = 0; i < 8; i++) {
+			msg[lane][i] = endian(sha[lane][i]);
+		}
+		msg[lane][8] = 0x00000080;
+		msg[lane][9] = 0;
+		msg[lane][10] = 0;
+		msg[lane][11] = 0;
+		msg[lane][12] = 0;
+		msg[lane][13] = 0;
+		msg[lane][14] = 256;
+		msg[lane][15] = 0;
+	}
+	ripemd160x8(msg, digest);
+}
+
+void crypto::ripemd160FromSha256x16(unsigned int sha[16][8], unsigned int digest[16][5])
+{
+#if defined(HAVE_AVX512)
+	if(kUseRipemdAvx512) {
+		crypto_ripemd160_fromsha_avx512x16(&sha[0][0], &digest[0][0]);
+		return;
+	}
+#endif
+	ripemd160FromSha256x8(sha, digest);
+	ripemd160FromSha256x8(&sha[8], &digest[8]);
 }

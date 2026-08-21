@@ -1,0 +1,23 @@
+Puzzle 71 — 1% window from solved-key landings
+
+Address : 1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
+Full    : 400000000000000000 : 7fffffffffffffffff
+
+Rule    : 1% slice around the tightest cluster of published t values.
+          Puzzles 40, 51, 59, 80 all landed at 82.17–82.89% of their
+          own ranges (span 0.72 points). Window is that mean ± 0.5%.
+
+t       : [0.821205, 0.831205)
+Center  : 74e08a27f5aa44a75a   (82.6205% of the 71-bit interval)
+Start   : 748e9ea2d6f1f2bbd5
+End     : 753275ad14629692de
+Width   : 11805916207174113034 keys  (exactly 1% of 2^70)
+
+Run:
+  research/puzzle71/run_window.sh
+
+BitCrack:
+  cpuBitCrack -c --keyspace 748e9ea2d6f1f2bbd5:753275ad14629692de \
+      --continue research/puzzle71/p71.progress \
+      -o research/puzzle71/found.txt \
+      1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU
