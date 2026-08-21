@@ -150,6 +150,9 @@ CpuKeySearchDevice::CpuKeySearchDevice(int threads, int pointsPerThread, int blo
     _iterations = 0;
     _singleTarget = false;
     _clipToEnd = false;
+    _hammingEnabled = false;
+    _hammingMinOnes = 0;
+    _hammingMaxOnes = 0;
 
     unsigned int hw = std::thread::hardware_concurrency();
     _deviceName = "CPU";
@@ -230,6 +233,45 @@ void CpuKeySearchDevice::setEndKey(const secp256k1::uint256 &endKey)
     _clipToEnd = true;
 }
 
+void CpuKeySearchDevice::setHammingFilter(int minOnes, int maxOnes)
+{
+    if(minOnes < 0 || maxOnes < minOnes) {
+        throw KeySearchException("Invalid Hamming filter bounds");
+    }
+    _hammingEnabled = true;
+    _hammingMinOnes = minOnes;
+    _hammingMaxOnes = maxOnes;
+}
+
+uint32_t CpuKeySearchDevice::top7HexBits(const secp256k1::uint256 &k)
+{
+    // Top 7 hex digits (28 bits) of the puzzle-71 zero-padded 18-hex representation.
+    return ((k.v[2] & 0xFFu) << 20) | (k.v[1] >> 12);
+}
+
+int CpuKeySearchDevice::popcount28(uint32_t x)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_popcount(x);
+#else
+    int n = 0;
+    while(x) {
+        n += x & 1;
+        x >>= 1;
+    }
+    return n;
+#endif
+}
+
+bool CpuKeySearchDevice::passesHammingFilter(uint64_t index)
+{
+    if(!_hammingEnabled) {
+        return true;
+    }
+    const int ones = popcount28(top7HexBits(privateKeyAtIndex(index)));
+    return ones >= _hammingMinOnes && ones <= _hammingMaxOnes;
+}
+
 secp256k1::uint256 CpuKeySearchDevice::privateKeyAtIndex(uint64_t index)
 {
     secp256k1::uint256 offset = (secp256k1::uint256(keysPerStep()) * _iterations + secp256k1::uint256(index)) * _stride;
@@ -305,6 +347,10 @@ bool CpuKeySearchDevice::checkAndRecord(uint64_t index, bool compressed, const u
 
 void CpuKeySearchDevice::processOne(uint64_t index)
 {
+    if(!passesHammingFilter(index)) {
+        return;
+    }
+
     const uint64_t *x = &_fx[(size_t)index * 4];
     const uint64_t *y = &_fy[(size_t)index * 4];
     unsigned int digest[5];
@@ -333,6 +379,13 @@ void CpuKeySearchDevice::processOne(uint64_t index)
 
 void CpuKeySearchDevice::processFour(uint64_t index)
 {
+    if(_hammingEnabled) {
+        for(int lane = 0; lane < 4; lane++) {
+            processOne(index + (uint64_t)lane);
+        }
+        return;
+    }
+
     unsigned int shaMsg[4][16];
     unsigned int shaDigest[4][8];
     unsigned int ripeMsg[4][16];
@@ -359,6 +412,13 @@ void CpuKeySearchDevice::processFour(uint64_t index)
 
 void CpuKeySearchDevice::processEight(uint64_t index)
 {
+    if(_hammingEnabled) {
+        for(int lane = 0; lane < 8; lane++) {
+            processOne(index + (uint64_t)lane);
+        }
+        return;
+    }
+
     unsigned int shaMsg[8][16];
     unsigned int shaDigest[8][8];
     unsigned int digest[8][5];
@@ -382,6 +442,13 @@ void CpuKeySearchDevice::processEight(uint64_t index)
 
 void CpuKeySearchDevice::processSixteen(uint64_t index)
 {
+    if(_hammingEnabled) {
+        for(int lane = 0; lane < 16; lane++) {
+            processOne(index + (uint64_t)lane);
+        }
+        return;
+    }
+
     unsigned int shaMsg[16][16];
     unsigned int shaDigest[16][8];
     unsigned int digest[16][5];
