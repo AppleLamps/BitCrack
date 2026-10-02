@@ -383,6 +383,360 @@ static void ripemd160_4x(const unsigned int *msg, unsigned int *digest)
 	digest[4] = tmp[0]; digest[9] = tmp[1]; digest[14] = tmp[2]; digest[19] = tmp[3];
 }
 
+
+typedef __m256i v8;
+
+static RIPEMD_INLINE v8 vrotl8(v8 x, int n)
+{
+	return _mm256_or_si256(_mm256_slli_epi32(x, n), _mm256_srli_epi32(x, 32 - n));
+}
+
+static RIPEMD_INLINE v8 F8(v8 x, v8 y, v8 z)
+{
+	return _mm256_xor_si256(_mm256_xor_si256(x, y), z);
+}
+
+static RIPEMD_INLINE v8 G8(v8 x, v8 y, v8 z)
+{
+	return _mm256_or_si256(_mm256_and_si256(x, y), _mm256_andnot_si256(x, z));
+}
+
+static RIPEMD_INLINE v8 H8(v8 x, v8 y, v8 z)
+{
+	return _mm256_xor_si256(_mm256_or_si256(x, _mm256_xor_si256(y, _mm256_set1_epi32(-1))), z);
+}
+
+static RIPEMD_INLINE v8 I8(v8 x, v8 y, v8 z)
+{
+	return _mm256_or_si256(_mm256_and_si256(x, z), _mm256_andnot_si256(z, y));
+}
+
+static RIPEMD_INLINE v8 J8(v8 x, v8 y, v8 z)
+{
+	return _mm256_xor_si256(x, _mm256_or_si256(y, _mm256_xor_si256(z, _mm256_set1_epi32(-1))));
+}
+
+static RIPEMD_INLINE void FF8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(F8(b, c, d), x));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void GG8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(G8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K0))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void HH8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(H8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K1))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void II8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(I8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K2))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void JJ8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(J8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K3))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void FFF8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(F8(b, c, d), x));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void GGG8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(G8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K4))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void HHH8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(H8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K5))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void III8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(I8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K6))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE void JJJ8(v8 &a, v8 &b, v8 &c, v8 &d, v8 &e, v8 x, int s)
+{
+	a = _mm256_add_epi32(a, _mm256_add_epi32(J8(b, c, d), _mm256_add_epi32(x, _mm256_set1_epi32((int)_K7))));
+	a = _mm256_add_epi32(vrotl8(a, s), e);
+	c = vrotl8(c, 10);
+}
+
+static RIPEMD_INLINE v8 vendian8(v8 x)
+{
+	return _mm256_shuffle_epi8(x, _mm256_setr_epi8(
+		3, 2, 1, 0,
+		7, 6, 5, 4,
+		11, 10, 9, 8,
+		15, 14, 13, 12,
+		3, 2, 1, 0,
+		7, 6, 5, 4,
+		11, 10, 9, 8,
+		15, 14, 13, 12));
+}
+
+#if defined(__GNUC__)
+__attribute__((target("avx2"), noinline))
+#endif
+static void ripemd160_8x(const unsigned int *msg, unsigned int *digest)
+{
+	v8 x[16];
+	for(int i = 0; i < 16; i++) {
+		x[i] = _mm256_setr_epi32(
+			(int)msg[i],
+			(int)msg[16 + i],
+			(int)msg[32 + i],
+			(int)msg[48 + i],
+			(int)msg[64 + i],
+			(int)msg[80 + i],
+			(int)msg[96 + i],
+			(int)msg[112 + i]);
+	}
+
+	const v8 iv0 = _mm256_set1_epi32((int)_IV[0]);
+	const v8 iv1 = _mm256_set1_epi32((int)_IV[1]);
+	const v8 iv2 = _mm256_set1_epi32((int)_IV[2]);
+	const v8 iv3 = _mm256_set1_epi32((int)_IV[3]);
+	const v8 iv4 = _mm256_set1_epi32((int)_IV[4]);
+
+	v8 a1 = iv0;
+	v8 b1 = iv1;
+	v8 c1 = iv2;
+	v8 d1 = iv3;
+	v8 e1 = iv4;
+
+	v8 a2 = iv0;
+	v8 b2 = iv1;
+	v8 c2 = iv2;
+	v8 d2 = iv3;
+	v8 e2 = iv4;
+
+	/* round 1 */
+	FF8(a1, b1, c1, d1, e1, x[0], 11);
+	FF8(e1, a1, b1, c1, d1, x[1], 14);
+	FF8(d1, e1, a1, b1, c1, x[2], 15);
+	FF8(c1, d1, e1, a1, b1, x[3], 12);
+	FF8(b1, c1, d1, e1, a1, x[4], 5);
+	FF8(a1, b1, c1, d1, e1, x[5], 8);
+	FF8(e1, a1, b1, c1, d1, x[6], 7);
+	FF8(d1, e1, a1, b1, c1, x[7], 9);
+	FF8(c1, d1, e1, a1, b1, x[8], 11);
+	FF8(b1, c1, d1, e1, a1, x[9], 13);
+	FF8(a1, b1, c1, d1, e1, x[10], 14);
+	FF8(e1, a1, b1, c1, d1, x[11], 15);
+	FF8(d1, e1, a1, b1, c1, x[12], 6);
+	FF8(c1, d1, e1, a1, b1, x[13], 7);
+	FF8(b1, c1, d1, e1, a1, x[14], 9);
+	FF8(a1, b1, c1, d1, e1, x[15], 8);
+
+	/* round 2 */
+	GG8(e1, a1, b1, c1, d1, x[7], 7);
+	GG8(d1, e1, a1, b1, c1, x[4], 6);
+	GG8(c1, d1, e1, a1, b1, x[13], 8);
+	GG8(b1, c1, d1, e1, a1, x[1], 13);
+	GG8(a1, b1, c1, d1, e1, x[10], 11);
+	GG8(e1, a1, b1, c1, d1, x[6], 9);
+	GG8(d1, e1, a1, b1, c1, x[15], 7);
+	GG8(c1, d1, e1, a1, b1, x[3], 15);
+	GG8(b1, c1, d1, e1, a1, x[12], 7);
+	GG8(a1, b1, c1, d1, e1, x[0], 12);
+	GG8(e1, a1, b1, c1, d1, x[9], 15);
+	GG8(d1, e1, a1, b1, c1, x[5], 9);
+	GG8(c1, d1, e1, a1, b1, x[2], 11);
+	GG8(b1, c1, d1, e1, a1, x[14], 7);
+	GG8(a1, b1, c1, d1, e1, x[11], 13);
+	GG8(e1, a1, b1, c1, d1, x[8], 12);
+
+	/* round 3 */
+	HH8(d1, e1, a1, b1, c1, x[3], 11);
+	HH8(c1, d1, e1, a1, b1, x[10], 13);
+	HH8(b1, c1, d1, e1, a1, x[14], 6);
+	HH8(a1, b1, c1, d1, e1, x[4], 7);
+	HH8(e1, a1, b1, c1, d1, x[9], 14);
+	HH8(d1, e1, a1, b1, c1, x[15], 9);
+	HH8(c1, d1, e1, a1, b1, x[8], 13);
+	HH8(b1, c1, d1, e1, a1, x[1], 15);
+	HH8(a1, b1, c1, d1, e1, x[2], 14);
+	HH8(e1, a1, b1, c1, d1, x[7], 8);
+	HH8(d1, e1, a1, b1, c1, x[0], 13);
+	HH8(c1, d1, e1, a1, b1, x[6], 6);
+	HH8(b1, c1, d1, e1, a1, x[13], 5);
+	HH8(a1, b1, c1, d1, e1, x[11], 12);
+	HH8(e1, a1, b1, c1, d1, x[5], 7);
+	HH8(d1, e1, a1, b1, c1, x[12], 5);
+
+	/* round 4 */
+	II8(c1, d1, e1, a1, b1, x[1], 11);
+	II8(b1, c1, d1, e1, a1, x[9], 12);
+	II8(a1, b1, c1, d1, e1, x[11], 14);
+	II8(e1, a1, b1, c1, d1, x[10], 15);
+	II8(d1, e1, a1, b1, c1, x[0], 14);
+	II8(c1, d1, e1, a1, b1, x[8], 15);
+	II8(b1, c1, d1, e1, a1, x[12], 9);
+	II8(a1, b1, c1, d1, e1, x[4], 8);
+	II8(e1, a1, b1, c1, d1, x[13], 9);
+	II8(d1, e1, a1, b1, c1, x[3], 14);
+	II8(c1, d1, e1, a1, b1, x[7], 5);
+	II8(b1, c1, d1, e1, a1, x[15], 6);
+	II8(a1, b1, c1, d1, e1, x[14], 8);
+	II8(e1, a1, b1, c1, d1, x[5], 6);
+	II8(d1, e1, a1, b1, c1, x[6], 5);
+	II8(c1, d1, e1, a1, b1, x[2], 12);
+
+	/* round 5 */
+	JJ8(b1, c1, d1, e1, a1, x[4], 9);
+	JJ8(a1, b1, c1, d1, e1, x[0], 15);
+	JJ8(e1, a1, b1, c1, d1, x[5], 5);
+	JJ8(d1, e1, a1, b1, c1, x[9], 11);
+	JJ8(c1, d1, e1, a1, b1, x[7], 6);
+	JJ8(b1, c1, d1, e1, a1, x[12], 8);
+	JJ8(a1, b1, c1, d1, e1, x[2], 13);
+	JJ8(e1, a1, b1, c1, d1, x[10], 12);
+	JJ8(d1, e1, a1, b1, c1, x[14], 5);
+	JJ8(c1, d1, e1, a1, b1, x[1], 12);
+	JJ8(b1, c1, d1, e1, a1, x[3], 13);
+	JJ8(a1, b1, c1, d1, e1, x[8], 14);
+	JJ8(e1, a1, b1, c1, d1, x[11], 11);
+	JJ8(d1, e1, a1, b1, c1, x[6], 8);
+	JJ8(c1, d1, e1, a1, b1, x[15], 5);
+	JJ8(b1, c1, d1, e1, a1, x[13], 6);
+
+
+	/* parallel round 1 */
+	JJJ8(a2, b2, c2, d2, e2, x[5], 8);
+	JJJ8(e2, a2, b2, c2, d2, x[14], 9);
+	JJJ8(d2, e2, a2, b2, c2, x[7], 9);
+	JJJ8(c2, d2, e2, a2, b2, x[0], 11);
+	JJJ8(b2, c2, d2, e2, a2, x[9], 13);
+	JJJ8(a2, b2, c2, d2, e2, x[2], 15);
+	JJJ8(e2, a2, b2, c2, d2, x[11], 15);
+	JJJ8(d2, e2, a2, b2, c2, x[4], 5);
+	JJJ8(c2, d2, e2, a2, b2, x[13], 7);
+	JJJ8(b2, c2, d2, e2, a2, x[6], 7);
+	JJJ8(a2, b2, c2, d2, e2, x[15], 8);
+	JJJ8(e2, a2, b2, c2, d2, x[8], 11);
+	JJJ8(d2, e2, a2, b2, c2, x[1], 14);
+	JJJ8(c2, d2, e2, a2, b2, x[10], 14);
+	JJJ8(b2, c2, d2, e2, a2, x[3], 12);
+	JJJ8(a2, b2, c2, d2, e2, x[12], 6);
+
+	/* parallel round 2 */
+	III8(e2, a2, b2, c2, d2, x[6], 9);
+	III8(d2, e2, a2, b2, c2, x[11], 13);
+	III8(c2, d2, e2, a2, b2, x[3], 15);
+	III8(b2, c2, d2, e2, a2, x[7], 7);
+	III8(a2, b2, c2, d2, e2, x[0], 12);
+	III8(e2, a2, b2, c2, d2, x[13], 8);
+	III8(d2, e2, a2, b2, c2, x[5], 9);
+	III8(c2, d2, e2, a2, b2, x[10], 11);
+	III8(b2, c2, d2, e2, a2, x[14], 7);
+	III8(a2, b2, c2, d2, e2, x[15], 7);
+	III8(e2, a2, b2, c2, d2, x[8], 12);
+	III8(d2, e2, a2, b2, c2, x[12], 7);
+	III8(c2, d2, e2, a2, b2, x[4], 6);
+	III8(b2, c2, d2, e2, a2, x[9], 15);
+	III8(a2, b2, c2, d2, e2, x[1], 13);
+	III8(e2, a2, b2, c2, d2, x[2], 11);
+
+	/* parallel round 3 */
+	HHH8(d2, e2, a2, b2, c2, x[15], 9);
+	HHH8(c2, d2, e2, a2, b2, x[5], 7);
+	HHH8(b2, c2, d2, e2, a2, x[1], 15);
+	HHH8(a2, b2, c2, d2, e2, x[3], 11);
+	HHH8(e2, a2, b2, c2, d2, x[7], 8);
+	HHH8(d2, e2, a2, b2, c2, x[14], 6);
+	HHH8(c2, d2, e2, a2, b2, x[6], 6);
+	HHH8(b2, c2, d2, e2, a2, x[9], 14);
+	HHH8(a2, b2, c2, d2, e2, x[11], 12);
+	HHH8(e2, a2, b2, c2, d2, x[8], 13);
+	HHH8(d2, e2, a2, b2, c2, x[12], 5);
+	HHH8(c2, d2, e2, a2, b2, x[2], 14);
+	HHH8(b2, c2, d2, e2, a2, x[10], 13);
+	HHH8(a2, b2, c2, d2, e2, x[0], 13);
+	HHH8(e2, a2, b2, c2, d2, x[4], 7);
+	HHH8(d2, e2, a2, b2, c2, x[13], 5);
+
+	/* parallel round 4 */
+	GGG8(c2, d2, e2, a2, b2, x[8], 15);
+	GGG8(b2, c2, d2, e2, a2, x[6], 5);
+	GGG8(a2, b2, c2, d2, e2, x[4], 8);
+	GGG8(e2, a2, b2, c2, d2, x[1], 11);
+	GGG8(d2, e2, a2, b2, c2, x[3], 14);
+	GGG8(c2, d2, e2, a2, b2, x[11], 14);
+	GGG8(b2, c2, d2, e2, a2, x[15], 6);
+	GGG8(a2, b2, c2, d2, e2, x[0], 14);
+	GGG8(e2, a2, b2, c2, d2, x[5], 6);
+	GGG8(d2, e2, a2, b2, c2, x[12], 9);
+	GGG8(c2, d2, e2, a2, b2, x[2], 12);
+	GGG8(b2, c2, d2, e2, a2, x[13], 9);
+	GGG8(a2, b2, c2, d2, e2, x[9], 12);
+	GGG8(e2, a2, b2, c2, d2, x[7], 5);
+	GGG8(d2, e2, a2, b2, c2, x[10], 15);
+	GGG8(c2, d2, e2, a2, b2, x[14], 8);
+
+	/* parallel round 5 */
+	FFF8(b2, c2, d2, e2, a2, x[12], 8);
+	FFF8(a2, b2, c2, d2, e2, x[15], 5);
+	FFF8(e2, a2, b2, c2, d2, x[10], 12);
+	FFF8(d2, e2, a2, b2, c2, x[4], 9);
+	FFF8(c2, d2, e2, a2, b2, x[1], 12);
+	FFF8(b2, c2, d2, e2, a2, x[5], 5);
+	FFF8(a2, b2, c2, d2, e2, x[8], 14);
+	FFF8(e2, a2, b2, c2, d2, x[7], 6);
+	FFF8(d2, e2, a2, b2, c2, x[6], 8);
+	FFF8(c2, d2, e2, a2, b2, x[2], 13);
+	FFF8(b2, c2, d2, e2, a2, x[13], 6);
+	FFF8(a2, b2, c2, d2, e2, x[14], 5);
+	FFF8(e2, a2, b2, c2, d2, x[0], 15);
+	FFF8(d2, e2, a2, b2, c2, x[3], 13);
+	FFF8(c2, d2, e2, a2, b2, x[9], 11);
+	FFF8(b2, c2, d2, e2, a2, x[11], 11);
+
+
+	v8 d0 = vendian8(_mm256_add_epi32(_mm256_add_epi32(iv1, c1), d2));
+	v8 d1o = vendian8(_mm256_add_epi32(_mm256_add_epi32(iv2, d1), e2));
+	v8 d2o = vendian8(_mm256_add_epi32(_mm256_add_epi32(iv3, e1), a2));
+	v8 d3o = vendian8(_mm256_add_epi32(_mm256_add_epi32(iv4, a1), b2));
+	v8 d4o = vendian8(_mm256_add_epi32(_mm256_add_epi32(iv0, b1), c2));
+
+	alignas(32) unsigned int tmp[8];
+	_mm256_store_si256((__m256i *)tmp, d0);
+	for(int lane = 0; lane < 8; lane++) digest[lane * 5 + 0] = tmp[lane];
+	_mm256_store_si256((__m256i *)tmp, d1o);
+	for(int lane = 0; lane < 8; lane++) digest[lane * 5 + 1] = tmp[lane];
+	_mm256_store_si256((__m256i *)tmp, d2o);
+	for(int lane = 0; lane < 8; lane++) digest[lane * 5 + 2] = tmp[lane];
+	_mm256_store_si256((__m256i *)tmp, d3o);
+	for(int lane = 0; lane < 8; lane++) digest[lane * 5 + 3] = tmp[lane];
+	_mm256_store_si256((__m256i *)tmp, d4o);
+	for(int lane = 0; lane < 8; lane++) digest[lane * 5 + 4] = tmp[lane];
+}
+
+
 extern "C" {
 #if defined(__GNUC__)
 __attribute__((target("avx2")))
@@ -390,6 +744,14 @@ __attribute__((target("avx2")))
 void crypto_ripemd160_avx2(unsigned int *msg, unsigned int *digest)
 {
 	ripemd160_4x(msg, digest);
+}
+
+#if defined(__GNUC__)
+__attribute__((target("avx2")))
+#endif
+void crypto_ripemd160_avx2_8(unsigned int *msg, unsigned int *digest)
+{
+	ripemd160_8x(msg, digest);
 }
 }
 
