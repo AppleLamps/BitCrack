@@ -22,6 +22,9 @@ namespace crypto {
 	 * 5 big-endian uint32 words (same as ripemd160). Uses AVX2 when
 	 * available, otherwise 4 scalar hashes. */
 	void ripemd160x4(unsigned int msg[4][16], unsigned int digest[4][5]);
+
+	/* 8 independent blocks, same word layout as ripemd160x4. */
+	void ripemd160x8(unsigned int msg[8][16], unsigned int digest[8][5]);
 	bool ripemd160UsesAvx2();
 
 	void sha256Init(unsigned int *digest);

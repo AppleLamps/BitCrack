@@ -348,6 +348,7 @@ void crypto::ripemd160(unsigned int *x, unsigned int *digest)
 
 #if defined(HAVE_AVX2)
 extern "C" void crypto_ripemd160_avx2(unsigned int *msg, unsigned int *digest);
+extern "C" void crypto_ripemd160_avx2_8(unsigned int *msg, unsigned int *digest);
 #endif
 
 static bool detectRipemdAvx2()
@@ -379,4 +380,17 @@ void crypto::ripemd160x4(unsigned int msg[4][16], unsigned int digest[4][5])
 	crypto::ripemd160(msg[1], digest[1]);
 	crypto::ripemd160(msg[2], digest[2]);
 	crypto::ripemd160(msg[3], digest[3]);
+}
+
+void crypto::ripemd160x8(unsigned int msg[8][16], unsigned int digest[8][5])
+{
+#if defined(HAVE_AVX2)
+	if(kUseRipemdAvx2) {
+		crypto_ripemd160_avx2_8(&msg[0][0], &digest[0][0]);
+		return;
+	}
+#endif
+	for(int lane = 0; lane < 8; lane++) {
+		crypto::ripemd160(msg[lane], digest[lane]);
+	}
 }
